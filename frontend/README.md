@@ -1,13 +1,12 @@
 # Frontend
 
-The ZFlow frontend is a Vue application owned by the frontend team. It is responsible for the user experience and interacts with the backend API for task submission and status.
+This package is a Vite + Vue 3 + TypeScript application that integrates with the FastAPI backend.
 
-## Scope
+## Run locally
 
-- UI/UX for creating and tracking video generation tasks
-- API integration with the FastAPI backend
+```bash
+npm install
+npm run dev
+```
 
-## Notes
-
-- Vue is the chosen framework for this project.
-- Backend API contracts live in `docs/02_API_SPEC.md`.
+The dev server runs on `http://localhost:5173` and expects the backend at `http://localhost:8000`.
