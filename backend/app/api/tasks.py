@@ -5,10 +5,18 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException
 
+from app.services.image_service import ImageService
+from app.services.llm_service import LLMService
+from app.services.video_service import VideoService
+
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 TASKS: Dict[str, Dict[str, Any]] = {}
 TASK_COUNTER = itertools.count(1)
+
+llm_service = LLMService()
+image_service = ImageService()
+video_service = VideoService()
 
 
 def _utc_now() -> str:

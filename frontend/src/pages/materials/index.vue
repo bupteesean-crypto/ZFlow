@@ -172,6 +172,9 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import StatusBadge from '@/components/common/StatusBadge.vue';
+import { fetchProject } from '@/api/projects';
+import { fetchMaterialPackages, type MaterialPackage } from '@/api/material-packages';
+import { fetchGenerationProgress, startGeneration } from '@/api/generation';
 
 interface VisualCandidate {
   tag: string;
@@ -250,6 +253,7 @@ const editInput = ref('');
 const conversations = ref<Conversation[]>([]);
 const assetPackages = ref<Record<string, AssetPackage>>({});
 const currentPackageId = ref('');
+const currentProjectId = ref<string | null>(null);
 const currentObject = ref<CurrentObject>({
   type: '',
   path: '请选择中间的对象进行修改',
@@ -257,50 +261,58 @@ const currentObject = ref<CurrentObject>({
   content: '',
 });
 
-// Demo data - would come from API
-const demoPackage1: AssetPackage = {
-  id: 'pkg-1',
-  title: '京韵田园绘梦（v1）',
-  status: 'done',
-  createdAt: Date.now() - 2000,
-  summary: '本短片采用微缩模型景观与童话绘本融合的田园风格，描绘理想化的"北京田园生活"：红砖木屋与青瓦屋顶（带青苔）、石径串联绿植与菜地，微距柔光、低饱和。',
-  style: '整体视觉设定以微缩模型景观、童话绘本风格、田园风光为核心方向，结合微距视角与手绘质感奠定基础画风。',
-  roles: [
-    {
-      name: '妞妞',
-      visuals: [
-        { tag: '原图', text: '放松前的状态', img: '', prompt: 'Q版小男孩，圆脸大眼睛，田园劳作姿态', selected: true },
-      ],
-      voices: [
-        { tag: '当前', text: '温和少年音色', audio: '', selected: true },
-      ],
-    },
-    {
-      name: '文文',
-      visuals: [
-        { tag: '原图', text: '乖巧版', img: '', prompt: 'Q版小女孩，圆脸大眼睛，田园场景中', selected: true },
-      ],
-      voices: [
-        { tag: '当前', text: '温柔少女音色', audio: '', selected: true },
-      ],
-    },
-  ],
-  scenes: [
-    {
-      name: '北京微缩田园',
-      candidates: [
-        { tag: '原图', text: '整体田园氛围', img: '', prompt: '微缩模型田园景观，童话绘本风格', selected: true },
-      ],
-    },
-  ],
-  storyboard: [
-    {
-      name: '分镜 1 · 田园初现',
-      candidates: [
-        { tag: '文本', text: '【画面】阳光柔和地洒落在一片微缩田园上。\n【构图】全景，平视。\n【运镜】镜头从左向右缓慢平移。\n【旁白】在这方寸之间，藏着一份北京的田园诗意。', selected: true },
-      ],
-    },
-  ],
+const mapPackageStatus = (status: string) => {
+  if (status === 'completed') return 'done';
+  if (status === 'generating') return 'loading';
+  return 'pending';
+};
+
+const mapMaterialPackage = (pkg: MaterialPackage): AssetPackage => {
+  const materials = pkg.materials || {};
+  const storyline = (materials as any).storyline || {};
+  const artStyle = (materials as any).art_style || {};
+  const characters = (materials as any).characters || [];
+  const scenes = (materials as any).scenes || [];
+  const storyboards = (materials as any).storyboards || [];
+
+  return {
+    id: pkg.id,
+    title: pkg.package_name || '素材包',
+    status: mapPackageStatus(pkg.status),
+    createdAt: pkg.created_at ? Date.parse(pkg.created_at) : Date.now(),
+    summary: storyline.summary || pkg.summary || '生成中…',
+    style: artStyle.description || '生成中…',
+    roles: characters.map((item: any) => ({
+      name: item.character_name || item.name || '角色',
+      visuals: [],
+      voices: [],
+    })),
+    scenes: scenes.map((item: any) => ({
+      name: item.scene_name || item.name || '场景',
+      candidates: [],
+    })),
+    storyboard: storyboards.map((item: any) => ({
+      name: `分镜 ${item.shot_number || ''}`.trim(),
+      candidates: item.description
+        ? [{ tag: '文本', text: item.description, selected: true }]
+        : [],
+    })),
+  };
+};
+
+const rebuildConversations = (packages: AssetPackage[]) => {
+  const prompt = sessionStorage.getItem('currentPrompt') || '创作输入';
+  conversations.value = packages.map((pkg, index) => ({
+    id: `conv-${pkg.id}`,
+    displayIndex: index + 1,
+    userPrompt: prompt,
+    sysText:
+      pkg.status === 'done'
+        ? `素材包「${pkg.title}」已生成完成。`
+        : `素材包「${pkg.title}」生成中...`,
+    status: pkg.status === 'done' ? 'done' : 'loading',
+    assetPackageId: pkg.id,
+  }));
 };
 
 const sortedPackages = computed(() => {
@@ -352,55 +364,36 @@ const truncateContent = (content: string) => {
   return content.length > 200 ? content.substring(0, 200) + '...' : content;
 };
 
-const sendChat = () => {
+const sendChat = async () => {
   const text = chatInput.value.trim();
   if (!text) return;
+  if (!currentProjectId.value) {
+    return;
+  }
+  chatInput.value = '';
 
-  const newConvId = `conv-${Date.now()}`;
-  const newPkgId = `pkg-${Date.now()}`;
-
+  const task = await startGeneration(currentProjectId.value);
+  const convId = `conv-${task.id}`;
   conversations.value.push({
-    id: newConvId,
+    id: convId,
     displayIndex: conversations.value.length + 1,
     userPrompt: text,
     sysText: '已收到你的需求，正在生成新的素材包...',
     status: 'loading',
-    assetPackageId: newPkgId,
+    assetPackageId: task.material_package_id || '',
   });
 
-  // Add new package
-  assetPackages.value[newPkgId] = {
-    id: newPkgId,
-    title: `新素材包 ${conversations.value.length}`,
-    status: 'loading',
-    createdAt: Date.now(),
-    summary: '生成中…',
-    style: '生成中…',
-    roles: [],
-    scenes: [],
-    storyboard: [],
-  };
-
-  currentPackageId.value = newPkgId;
-  chatInput.value = '';
-
-  // Simulate completion
-  setTimeout(() => {
-    const conv = conversations.value.find(c => c.id === newConvId);
-    if (conv) {
-      conv.status = 'done';
-      conv.sysText = '素材包生成完成！你可以在中间区域查看结果。';
+  let completed = false;
+  while (!completed) {
+    const progress = await fetchGenerationProgress(currentProjectId.value);
+    const latest = progress.list.find(item => item.id === task.id) || task;
+    if (latest.status === 'completed') {
+      completed = true;
+    } else {
+      await new Promise(resolve => setTimeout(resolve, 800));
     }
-    const pkg = assetPackages.value[newPkgId];
-    if (pkg) {
-      pkg.status = 'done';
-      pkg.summary = demoPackage1.summary;
-      pkg.style = demoPackage1.style;
-      pkg.roles = JSON.parse(JSON.stringify(demoPackage1.roles));
-      pkg.scenes = JSON.parse(JSON.stringify(demoPackage1.scenes));
-      pkg.storyboard = JSON.parse(JSON.stringify(demoPackage1.storyboard));
-    }
-  }, 3000);
+  }
+  await loadPackages();
 };
 
 const handleChatKeydown = (e: KeyboardEvent) => {
@@ -422,7 +415,6 @@ const handleRegenerate = () => {
 };
 
 const savePackage = () => {
-  // TODO: Call API to save package
   alert('存档功能开发中');
 };
 
@@ -467,19 +459,43 @@ const startResizeRight = (e: MouseEvent) => {
   document.addEventListener('mouseup', onUp);
 };
 
-onMounted(() => {
-  // Initialize with demo data
-  assetPackages.value['pkg-1'] = demoPackage1;
-  currentPackageId.value = 'pkg-1';
-
-  conversations.value.push({
-    id: 'conv-1',
-    displayIndex: 1,
-    userPrompt: sessionStorage.getItem('currentPrompt') || '北京的田园生活，微缩模型+童话绘本风格',
-    sysText: '已生成素材包「京韵田园绘梦（v1）」：完成整体风格、角色妞妞/文文、田园场景与基础分镜。',
-    status: 'done',
-    assetPackageId: 'pkg-1',
+const loadPackages = async () => {
+  if (!currentProjectId.value) {
+    return;
+  }
+  const data = await fetchMaterialPackages(currentProjectId.value);
+  const mapped = data.list.map(mapMaterialPackage);
+  assetPackages.value = {};
+  mapped.forEach(pkg => {
+    assetPackages.value[pkg.id] = pkg;
   });
+  if (mapped.length > 0) {
+    const latest = mapped.sort((a, b) => b.createdAt - a.createdAt)[0];
+    currentPackageId.value = latest.id;
+    rebuildConversations(mapped);
+  }
+};
+
+onMounted(async () => {
+  const storedProjectId = sessionStorage.getItem('currentProjectId');
+  if (!storedProjectId) {
+    router.push('/space');
+    return;
+  }
+  currentProjectId.value = storedProjectId;
+
+  try {
+    const project = await fetchProject(storedProjectId);
+    sessionStorage.setItem('currentProjectName', project.name || '未命名创作');
+  } catch (err) {
+    alert(err instanceof Error ? err.message : '项目加载失败');
+  }
+
+  try {
+    await loadPackages();
+  } catch (err) {
+    alert(err instanceof Error ? err.message : '素材包加载失败');
+  }
 });
 </script>
 

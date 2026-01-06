@@ -10,20 +10,20 @@ It overrides all assumptions and defaults.
 ## 2. Mandatory Context
 
 Before making any change, AI MUST read:
-- docs/STATE.md
-- docs/FEATURES.md
-- docs/USER_JOURNEY.md
+- docs/state.md
+- docs/user_journey.md
+- docs/temp/interface_merge.md
 
-If any conflict exists, STATE.md has highest priority.
+If any conflict exists, docs/state.md has highest priority.
 
 ---
 
 ## 3. Hard Constraints (DO NOT VIOLATE)
 
 AI MUST NOT:
-- Implement features marked as "future" or "mocked" in STATE.md
+- Implement features marked as "future" or "mocked" in docs/state.md
 - Introduce persistence, auth, or real execution engines unless explicitly instructed
-- Modify architecture boundaries without updating STATE.md first
+- Modify architecture boundaries without updating docs/state.md first
 - Assume production readiness
 
 ---
@@ -33,7 +33,7 @@ AI MUST NOT:
 AI MAY:
 - Refactor code for clarity without changing behavior
 - Improve documentation consistency
-- Implement features explicitly listed as "next step" in STATE.md
+- Implement features explicitly listed as "next step" in docs/state.md
 - Ask for clarification if scope is ambiguous
 
 ---
@@ -42,7 +42,7 @@ AI MAY:
 
 If a task implies new capabilities:
 1. Stop
-2. Propose the change in STATE.md
+2. Propose the change in docs/state.md
 3. Wait for human confirmation
 4. Only then implement
 

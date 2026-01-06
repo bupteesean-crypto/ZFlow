@@ -125,6 +125,8 @@
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 
+import { login } from '@/api/auth';
+
 const router = useRouter();
 
 const loginMode = ref<'personal' | 'team'>('personal');
@@ -177,17 +179,29 @@ const handleLogin = async () => {
 
   loading.value = true;
 
-  // TODO: Call API to verify code
-  // Simulate API call
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  try {
+    const data = await login({
+      phone: phone.value,
+      code: code.value,
+      invite_code: loginMode.value === 'team' ? teamInvite.value : undefined,
+    });
+    sessionStorage.setItem('authenticated', String(data.authenticated));
+    sessionStorage.setItem('sessionToken', data.session_token);
+    sessionStorage.setItem('refreshToken', data.refresh_token);
+    sessionStorage.setItem('userType', data.user.user_type);
+    sessionStorage.setItem('currentSpace', data.current_space?.space_name || '');
 
-  // Demo: Store auth state
-  sessionStorage.setItem('authenticated', 'true');
-  sessionStorage.setItem('userType', loginMode.value);
-  sessionStorage.setItem('currentSpace', loginMode.value === 'team' ? 'team-space' : 'personal-space');
-
-  loading.value = false;
-  router.push('/');
+    const redirect = router.currentRoute.value.query.redirect;
+    if (typeof redirect === 'string' && redirect.length > 0) {
+      router.push(redirect);
+    } else {
+      router.push('/');
+    }
+  } catch (err) {
+    alert(err instanceof Error ? err.message : '登录失败');
+  } finally {
+    loading.value = false;
+  }
 };
 
 const goBack = () => {

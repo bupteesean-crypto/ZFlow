@@ -19,7 +19,7 @@ ZFlow is an AI-powered, one-stop video generation platform. This repository prov
 
 Start in `docs/00_PROJECT_CONTEXT.md` for product intent, then `docs/01_ARCHITECTURE.md` for the system view.
 
-## Local development
+## Run ZFlow v0 locally
 
 Backend (port 8000):
 ```bash

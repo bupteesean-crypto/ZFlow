@@ -137,6 +137,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast';
+import { createProject } from '@/api/projects';
+import { fetchGenerationProgress, startGeneration } from '@/api/generation';
 
 interface TodoItem {
   title: string;
@@ -266,22 +268,52 @@ const handleSubmit = async () => {
   }
 
   generating.value = true;
+  todoItems.value.forEach(item => {
+    item.status = 'pending';
+  });
 
-  // Simulate todo progress
-  for (let i = 0; i < todoItems.value.length; i++) {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    todoItems.value[i].status = 'loading';
-    await new Promise(resolve => setTimeout(resolve, 800));
-    todoItems.value[i].status = 'done';
+  try {
+    const projectName = prompt.value.slice(0, 20);
+    const project = await createProject({ name: projectName });
+    sessionStorage.setItem('currentProjectId', project.id);
+    sessionStorage.setItem('currentProjectName', project.name);
+    sessionStorage.setItem('currentPrompt', prompt.value);
+    sessionStorage.setItem('currentMode', mode.value);
+
+    const task = await startGeneration(project.id);
+    let completed = false;
+    const updateTodo = (progress: number) => {
+      todoItems.value.forEach(item => {
+        item.status = 'pending';
+      });
+      if (progress >= 0) todoItems.value[0].status = 'loading';
+      if (progress >= 30) todoItems.value[0].status = 'done';
+      if (progress >= 30) todoItems.value[1].status = 'loading';
+      if (progress >= 60) todoItems.value[1].status = 'done';
+      if (progress >= 60) todoItems.value[2].status = 'loading';
+      if (progress >= 80) todoItems.value[2].status = 'done';
+      if (progress >= 80) todoItems.value[3].status = 'loading';
+      if (progress >= 100) todoItems.value[3].status = 'done';
+      if (progress >= 100) todoItems.value[4].status = 'done';
+    };
+
+    while (!completed) {
+      const progressData = await fetchGenerationProgress(project.id);
+      const latest = progressData.list.find(item => item.id === task.id) || task;
+      updateTodo(latest.progress || 0);
+      if (latest.status === 'completed') {
+        completed = true;
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
+    }
+
+    generating.value = false;
+    router.push('/materials');
+  } catch (err) {
+    generating.value = false;
+    showToast(err instanceof Error ? err.message : '生成失败', 'error');
   }
-
-  // Store prompt and navigate to materials page
-  sessionStorage.setItem('currentPrompt', prompt.value);
-  sessionStorage.setItem('currentMode', mode.value);
-
-  await new Promise(resolve => setTimeout(resolve, 500));
-  generating.value = false;
-  router.push('/materials');
 };
 
 const applyInspiration = (card: InspirationCard) => {

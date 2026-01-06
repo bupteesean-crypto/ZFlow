@@ -103,6 +103,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import StatusBadge from '@/components/common/StatusBadge.vue';
+import { fetchProjects } from '@/api/projects';
 
 const router = useRouter();
 
@@ -151,57 +152,58 @@ const selectSpace = (space: TeamSpace) => {
 const openJourney = (item: Journey) => {
   // Store journey info and navigate to materials
   sessionStorage.setItem('currentProjectName', item.title);
+  sessionStorage.setItem('currentProjectId', item.id);
   sessionStorage.setItem('currentAssetPackageId', item.pkgId || '');
   router.push('/materials');
 };
 
-onMounted(() => {
-  // Load journeys from localStorage or use demo data
-  const storedJourneys = sessionStorage.getItem('journeys');
-  if (storedJourneys) {
-    try {
-      const journeys = JSON.parse(storedJourneys);
-      inProgressItems.value = journeys
-        .filter((j: Journey) => j.status === 'progress')
-        .map((j: any) => ({
-          id: j.id,
-          title: j.title || '未命名创作',
-          desc: '素材包已生成，可继续微调/剪辑',
-          status: 'progress',
-          updatedAt: j.updatedAt || Date.now(),
-          pkgId: j.lastPkgId || '',
-        }));
-      doneItems.value = journeys
-        .filter((j: Journey) => j.status === 'exported')
-        .map((j: any) => ({
-          id: j.id,
-          title: j.title || '未命名创作',
-          desc: '视频已完成渲染',
-          status: 'exported',
-          updatedAt: j.updatedAt || Date.now(),
-        }));
-    } catch (e) {
-      // Use demo data
-      loadDemoData();
-    }
-  } else {
-    loadDemoData();
+const statusToJourney = (status: string) => {
+  if (status === 'exported') return 'exported';
+  return 'progress';
+};
+
+const buildDesc = (status: string) => {
+  if (status === 'exported') return '视频已完成渲染';
+  if (status === 'editing') return '素材包已生成，可继续微调/剪辑';
+  if (status === 'generating') return '素材生成中';
+  return '草稿创建中';
+};
+
+onMounted(async () => {
+  const storedUserType = sessionStorage.getItem('userType');
+  if (storedUserType === 'team') {
+    userType.value = 'team';
+    spaceName.value = '团队空间';
+  }
+
+  try {
+    const data = await fetchProjects();
+    const progress: Journey[] = [];
+    const done: Journey[] = [];
+
+    data.list.forEach(project => {
+      const mapped: Journey = {
+        id: project.id,
+        title: project.name || '未命名创作',
+        desc: buildDesc(project.status),
+        status: statusToJourney(project.status),
+        updatedAt: project.updated_at ? Date.parse(project.updated_at) : Date.now(),
+        pkgId: project.last_material_package_id || '',
+      };
+      if (mapped.status === 'exported') {
+        done.push(mapped);
+      } else {
+        progress.push(mapped);
+      }
+    });
+
+    inProgressItems.value = progress;
+    doneItems.value = done;
+  } catch (err) {
+    inProgressItems.value = [];
+    doneItems.value = [];
   }
 });
-
-const loadDemoData = () => {
-  // Demo data from prototype
-  inProgressItems.value = [
-    {
-      id: 'journey-1',
-      title: '京韵田园绘梦',
-      desc: '素材包已生成，可继续微调/剪辑',
-      status: 'progress',
-      updatedAt: Date.now(),
-      pkgId: 'pkg-1',
-    },
-  ];
-};
 </script>
 
 <style scoped>
