@@ -32,6 +32,8 @@ class Settings:
     video_provider: str = os.getenv("VIDEO_PROVIDER", "")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    glm_api_key: str = os.getenv("GLM_API_KEY", "")
+    glm_model: str = os.getenv("GLM_MODEL", "")
     stability_api_key: str = os.getenv("STABILITY_API_KEY", "")
     dalle_api_key: str = os.getenv("DALLE_API_KEY", "")
     runway_api_key: str = os.getenv("RUNWAY_API_KEY", "")

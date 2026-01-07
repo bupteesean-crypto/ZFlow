@@ -1,3 +1,4 @@
+import logging
 import time
 from typing import Any, Dict
 
@@ -11,9 +12,12 @@ from app.db.models import utc_now as db_utc_now
 from app.db.session import SessionLocal, get_db
 from app.repositories import material_packages as package_repo
 from app.repositories import projects as project_repo
+from app.services.llm_service import LLMService
 from app.store import GENERATION_TASKS, GENERATION_TRACES, new_id, utc_now
 
 router = APIRouter(prefix="/generation", tags=["generation"])
+llm_service = LLMService()
+logger = logging.getLogger(__name__)
 
 
 def _simulate_generation(task_id: str) -> None:
@@ -120,14 +124,54 @@ async def start_generation(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    prompt = payload.get("prompt")
+    if isinstance(prompt, str) and prompt.strip():
+        llm_input = prompt.strip()
+    else:
+        llm_input = project.get("description") or project.get("name") or ""
+    started_at = time.perf_counter()
     try:
+        llm_result = llm_service.generate(str(llm_input))
+    except Exception:
+        logger.exception("LLM generation failed for project_id=%s", project_id)
+        llm_result = {"summary": "Demo content", "storyline": "Demo content", "keywords": []}
+    duration_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info("LLM generation finished project_id=%s duration_ms=%s", project_id, duration_ms)
+
+    try:
+        if not isinstance(llm_result, dict):
+            logger.debug("LLM output not structured for project_id=%s; using fallback", project_id)
+        summary = llm_result.get("summary") if isinstance(llm_result, dict) else None
+        storyline = llm_result.get("storyline") if isinstance(llm_result, dict) else None
+        keywords = llm_result.get("keywords") if isinstance(llm_result, dict) else []
+        if not isinstance(summary, str) or not summary.strip():
+            logger.debug("LLM summary missing for project_id=%s; using fallback", project_id)
+            summary = "Demo content"
+        if not isinstance(storyline, str) or not storyline.strip():
+            logger.debug("LLM storyline missing for project_id=%s; using summary", project_id)
+            storyline = summary
+        if not isinstance(keywords, list):
+            logger.debug("LLM keywords invalid for project_id=%s; using empty list", project_id)
+            keywords = []
+        keywords = [str(item).strip() for item in keywords if str(item).strip()]
         package = package_repo.create_package(
             db,
             project_id=project_id,
             package_name="Package v1",
-            status="generating",
+            status="completed",
             materials={
-                "storyline": {"title": "Mock Story", "content": "Demo content", "summary": "Demo summary"},
+                "storyline": {
+                    "title": "Mock Story",
+                    "content": storyline,
+                    "summary": summary,
+                },
+                "metadata": {
+                    "summary": summary,
+                    "storyline": storyline,
+                    "keywords": keywords,
+                    "image_plan": {"status": "pending", "items": []},
+                    "video_plan": {"status": "pending", "items": []},
+                },
                 "art_style": {"style_name": "Minimal", "description": "Clean visuals"},
                 "characters": [],
                 "scenes": [],

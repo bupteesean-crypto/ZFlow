@@ -102,6 +102,17 @@ When updating state.md, AI MUST:
 - Added in-memory domain event logging with trace IDs for generation lifecycle and project/material package changes.
 - Replaced init_db print statements with structured logging for consistent backend logs.
 - Performed a static end-to-end integration review; runtime browser verification remains blocked in this environment.
+- Integrated GLM-4.7 LLM provider support with a direct HTTP call and mock fallback in the LLM service.
+- Generation start now writes LLM output into MaterialPackage storyline content/summary when provider=glm.
+- GLM-4.7 is now the first real LLM provider integrated into ZFlow.
+- Investigated POST `/api/v1/projects` 500s tied to `user_id` persistence and moved to schema alignment (removed `user_id` from ORM writes).
+- Project creation failures now log full SQLAlchemy tracebacks to aid diagnosis.
+- Fixed POST `/api/v1/projects` 500s caused by ORM/schema mismatch (projects table has no `user_id`); removed `user_id` from the Project model and repository writes while keeping the API response field as null.
+- `/api/v1/generation/start` now accepts prompt input, calls the LLM, and stores the generated text in material package storyline fields while marking the package completed.
+- Frontend generation calls now pass the user prompt so LLM output can render in materials.
+- Added a structured LLM prompt contract (summary/storyline/keywords) with safe JSON parsing and fallback to plain text.
+- Stored structured LLM output inside material package materials metadata while keeping storyline fields for backward compatibility.
+- Moved the LLM system prompt into a reusable prompt asset and added metadata placeholders for future image/video plans.
 
 ## Current Capabilities
 
@@ -132,6 +143,10 @@ When updating state.md, AI MUST:
 - Backend now logs structured domain events for project/material package/generation actions.
 - init_db scripts now emit log lines instead of print output.
 - End-to-end login → project → generation → material package flow aligns with current API responses (static review).
+- GLM-4.7 can generate storyline text during generation when LLM_PROVIDER=glm.
+- Generation start accepts prompt input and surfaces GLM output in material package storyline text.
+- Generation stores structured summary/storyline/keywords in material package materials metadata for future expansion.
+- Materials metadata now reserves empty image/video plan placeholders for future generation stages.
 
 ## Known Limitations
 
@@ -162,6 +177,14 @@ When updating state.md, AI MUST:
 - Domain events are in-memory only and not exposed via the API.
 - Generation trace IDs are logged but not returned in responses.
 - End-to-end UI flow has not been exercised in a live browser session in this environment.
+- GLM integration is single-turn and synchronous; failures fall back to mock output.
+- GLM output only populates storyline text; other material fields remain mocked.
+- User records are not used for projects; there is no persisted user lifecycle.
+- Projects are not linked to users in the database schema; `user_id` is not persisted.
+- Generation progress remains simulated even when LLM output is used.
+- Structured LLM output parsing is best-effort; invalid JSON falls back to plain text.
+- Structured metadata is stored inside materials JSON, not a dedicated column.
+- Image/video plan metadata is a placeholder only; no generation logic exists for these stages.
 
 ## Next Confirmed Steps
 
@@ -180,3 +203,7 @@ When updating state.md, AI MUST:
 - Confirm generated_at auto-stamping when material package status is set to completed.
 - Decide whether to persist domain events or expose them via admin tooling (not yet).
 - Run the full frontend flow in a browser and confirm logs match project/package events.
+- Run a live GLM-backed generation to verify content is returned and stored in material packages.
+- Validate GLM error handling against missing/invalid credentials in a runtime environment.
+- Run the landing → materials flow in a live browser to confirm GLM text renders after generation.
+- Validate structured JSON output from GLM in a live browser flow.

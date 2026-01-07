@@ -1,5 +1,7 @@
 from typing import Any, Dict
 
+import logging
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -9,6 +11,7 @@ from app.db.session import get_db
 from app.repositories import projects as project_repo
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+logger = logging.getLogger(__name__)
 
 PROJECT_STATUSES = {"draft", "generating", "editing", "completed", "exported"}
 PROJECT_STAGES = {"input", "generating", "editing", "completed"}
@@ -52,6 +55,7 @@ async def create_project(
         return ok(project)
     except SQLAlchemyError:
         db.rollback()
+        logger.exception("Failed to create project")
         raise HTTPException(status_code=500, detail="Database error")
 
 

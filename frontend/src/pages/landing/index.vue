@@ -96,7 +96,7 @@
     </section>
 
     <!-- Inspiration Grid -->
-    <section v-if="!isShrunk" class="inspiration-section">
+    <section class="inspiration-section" :class="{ 'is-shrunk': isShrunk }">
       <h2 class="section-title">灵感示例</h2>
       <div class="inspiration-grid">
         <div
@@ -280,7 +280,7 @@ const handleSubmit = async () => {
     sessionStorage.setItem('currentPrompt', prompt.value);
     sessionStorage.setItem('currentMode', mode.value);
 
-    const task = await startGeneration(project.id);
+    const task = await startGeneration(project.id, prompt.value);
     let completed = false;
     const updateTodo = (progress: number) => {
       todoItems.value.forEach(item => {
@@ -781,6 +781,13 @@ onUnmounted(() => {
   padding: 60px 24px;
   max-width: 1200px;
   margin: 0 auto;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.inspiration-section.is-shrunk {
+  opacity: 0.2;
+  transform: translateY(12px);
+  pointer-events: none;
 }
 
 .section-title {

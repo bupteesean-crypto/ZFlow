@@ -373,7 +373,7 @@ const sendChat = async () => {
   }
   chatInput.value = '';
 
-  const task = await startGeneration(currentProjectId.value);
+  const task = await startGeneration(currentProjectId.value, text);
   const convId = `conv-${task.id}`;
   conversations.value.push({
     id: convId,

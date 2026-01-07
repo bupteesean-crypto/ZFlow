@@ -14,7 +14,6 @@ class Project(Base):
     __tablename__ = "projects"
 
     id = Column(String(36), primary_key=True, index=True)
-    user_id = Column(String(36), nullable=True)
     team_space_id = Column(String(36), nullable=True)
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
@@ -49,7 +48,7 @@ class MaterialPackage(Base):
 def to_project_dict(project: Project) -> dict[str, Any]:
     return {
         "id": project.id,
-        "user_id": project.user_id,
+        "user_id": getattr(project, "user_id", None),
         "team_space_id": project.team_space_id,
         "name": project.name,
         "description": project.description,

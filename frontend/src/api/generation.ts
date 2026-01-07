@@ -19,10 +19,12 @@ export type GenerationProgressResponse = {
   list: GenerationTask[];
 };
 
-export async function startGeneration(projectId: string): Promise<GenerationTask> {
-  const { data } = await request.post<ApiResponse<GenerationTask>>("/generation/start", {
-    project_id: projectId,
-  });
+export async function startGeneration(projectId: string, prompt?: string): Promise<GenerationTask> {
+  const payload: { project_id: string; prompt?: string } = { project_id: projectId };
+  if (prompt) {
+    payload.prompt = prompt;
+  }
+  const { data } = await request.post<ApiResponse<GenerationTask>>("/generation/start", payload);
   if (data.code !== 0) {
     throw new Error(data.message || "Failed to start generation");
   }

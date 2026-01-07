@@ -1,15 +1,13 @@
 <template>
   <div class="app-shell">
     <!-- Top Navigation -->
-    <nav class="glass-nav fixed top-0 left-0 right-0 z-50">
-      <div class="px-5 py-3 flex items-center justify-between">
-        <div class="flex items-center space-x-3">
+    <nav class="glass-nav">
+      <div class="top-nav">
+        <div class="top-nav__left">
           <div class="logo-badge">ZV</div>
-          <div>
-            <div class="text-sm uppercase tracking-[0.2em] text-slate-400">Z.Video</div>
-          </div>
-          <div v-if="showSpaceSelector" class="hidden lg:flex items-center space-x-2 pl-4 ml-4 border-l border-white/5">
-            <span class="text-xs text-slate-500">Space</span>
+          <div class="brand-name">Z.Video</div>
+          <div v-if="showSpaceSelector" class="space-switcher">
+            <span class="space-label">Space</span>
             <select class="space-select" v-model="currentSpace" @change="handleSpaceChange">
               <option class="bg-slate-900" value="">选择空间</option>
               <option v-for="space in spaces" :key="space.id" :value="space.id">
@@ -18,8 +16,8 @@
             </select>
           </div>
         </div>
-        <div class="flex items-center space-x-3">
-          <div v-if="showSearch" class="relative hidden md:block">
+        <div class="top-nav__right">
+          <div v-if="showSearch" class="search-wrap">
             <input
               type="search"
               placeholder="⌘K / 搜索任务"
@@ -27,7 +25,7 @@
             />
             <span class="search-hint">CTRL+K</span>
           </div>
-          <div class="flex items-center space-x-2 text-xs text-slate-400">
+          <div class="top-nav__meta">
             <span v-if="quota" class="quota-badge">配额 {{ quota }} 次生成</span>
             <span class="beta-badge">Beta</span>
           </div>
@@ -44,8 +42,8 @@
     </nav>
 
     <!-- Left Sidebar -->
-    <aside class="fixed left-0 top-1/2 -translate-y-1/2 w-16 z-40">
-      <div class="glass-side rounded-2xl py-4 flex flex-col items-center space-y-2 mx-2 shadow-lg shadow-black/40">
+    <aside class="side-nav">
+      <div class="glass-side">
         <RouterLink
           v-for="item in navItems"
           :key="item.name"
@@ -242,9 +240,63 @@ if (typeof document !== 'undefined') {
 }
 
 .glass-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
   background: rgba(255, 251, 254, 0.9);
   border-bottom: 1px solid rgba(121, 116, 126, 0.2);
   backdrop-filter: blur(12px);
+}
+
+.top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+}
+
+.top-nav__left,
+.top-nav__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-name {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--md-on-surface-variant);
+}
+
+.space-switcher {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding-left: 16px;
+  margin-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.space-label {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+}
+
+.search-wrap {
+  position: relative;
+  display: none;
+}
+
+.top-nav__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
 }
 
 .logo-badge {
@@ -337,9 +389,26 @@ if (typeof document !== 'undefined') {
   object-fit: cover;
 }
 
+.side-nav {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 64px;
+  z-index: 40;
+}
+
 .glass-side {
   background: rgba(243, 237, 247, 0.9);
   border-right: 1px solid rgba(121, 116, 126, 0.2);
+  border-radius: 16px;
+  padding: 16px 0;
+  margin: 0 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 16px 28px rgba(0, 0, 0, 0.18);
 }
 
 .nav-link {
@@ -566,6 +635,18 @@ if (typeof document !== 'undefined') {
   box-shadow: 0 10px 22px rgba(26, 18, 44, 0.12);
   font-size: 12px;
   z-index: 200;
+}
+
+@media (min-width: 768px) {
+  .search-wrap {
+    display: block;
+  }
+}
+
+@media (min-width: 1024px) {
+  .space-switcher {
+    display: flex;
+  }
 }
 
 .app-shell__content {
