@@ -172,6 +172,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import StatusBadge from '@/components/common/StatusBadge.vue';
+import CandidateRow from '@/components/common/CandidateRow.vue';
 import { fetchProject } from '@/api/projects';
 import { fetchMaterialPackages, type MaterialPackage } from '@/api/material-packages';
 import { fetchGenerationProgress, startGeneration } from '@/api/generation';
@@ -502,8 +503,8 @@ onMounted(async () => {
 <style scoped>
 .materials-page {
   min-height: calc(100vh - 56px);
-  background: #05070f;
-  color: #dfe8ff;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
 }
 
 .layout {
@@ -514,8 +515,8 @@ onMounted(async () => {
 }
 
 .col-left {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--md-surface-container);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 12px;
   padding: 12px;
   display: flex;
@@ -528,8 +529,8 @@ onMounted(async () => {
 .col-center {
   flex: 1;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--md-surface-container);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 12px;
   padding: 14px;
   height: 100%;
@@ -537,8 +538,8 @@ onMounted(async () => {
 }
 
 .col-right {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--md-surface-container);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 12px;
   padding: 12px;
   display: flex;
@@ -561,13 +562,13 @@ onMounted(async () => {
   content: '';
   width: 2px;
   height: 50px;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(121, 116, 126, 0.3);
   border-radius: 2px;
   transition: background 0.2s;
 }
 
 .resize-handle:hover::after {
-  background: rgba(108, 249, 224, 0.6);
+  background: rgba(103, 80, 164, 0.6);
 }
 
 /* Dialog List */
@@ -597,22 +598,22 @@ onMounted(async () => {
 
 .bubble.user {
   margin-left: auto;
-  background: linear-gradient(135deg, rgba(108, 249, 224, 0.16), rgba(124, 93, 255, 0.18));
-  color: #e8f7ff;
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
 }
 
 .bubble.user .bubble-meta {
   text-align: right;
   font-size: 11px;
-  color: #c7d2fe;
+  color: var(--md-on-surface-variant);
 }
 
 .bubble.system {
   margin-right: auto;
-  background: linear-gradient(180deg, #1f1f23, #161618);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #dfe8ff;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  background: var(--md-surface-container);
+  border: 1px solid rgba(121, 116, 126, 0.2);
+  color: var(--md-on-surface);
+  box-shadow: 0 10px 26px rgba(26, 18, 44, 0.14);
 }
 
 .assistant-title {
@@ -620,13 +621,13 @@ onMounted(async () => {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #c7d2fe;
+  color: var(--md-on-surface-variant);
   margin-bottom: 6px;
 }
 
 .assistant-foot {
   font-size: 11px;
-  color: #9aa8c7;
+  color: var(--md-on-surface-variant);
   margin-top: 6px;
 }
 
@@ -636,21 +637,21 @@ onMounted(async () => {
   margin-top: 8px;
   padding: 6px 10px;
   border-radius: 9999px;
-  border: 1px solid rgba(108, 249, 224, 0.3);
-  background: rgba(108, 249, 224, 0.12);
-  color: #9cfbe6;
+  border: 1px solid rgba(103, 80, 164, 0.3);
+  background: rgba(103, 80, 164, 0.12);
+  color: var(--md-primary);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .pkg-chip:hover {
-  background: rgba(108, 249, 224, 0.2);
+  background: rgba(103, 80, 164, 0.2);
 }
 
 .pkg-chip.active {
-  border-color: rgba(108, 249, 224, 0.6);
-  background: rgba(108, 249, 224, 0.25);
+  border-color: rgba(103, 80, 164, 0.6);
+  background: rgba(103, 80, 164, 0.25);
 }
 
 /* Chat Input */
@@ -663,10 +664,10 @@ onMounted(async () => {
   flex: 1;
   min-height: 52px;
   max-height: 120px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--md-surface-container-low);
+  border: 1px solid rgba(121, 116, 126, 0.25);
   border-radius: 10px;
-  color: #e5e7eb;
+  color: var(--md-on-surface);
   padding: 8px;
   resize: vertical;
 }
@@ -674,9 +675,9 @@ onMounted(async () => {
 .chat-input button {
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(108, 249, 224, 0.4);
-  background: linear-gradient(135deg, rgba(108, 249, 224, 0.18), rgba(124, 93, 255, 0.18));
-  color: #e5e7eb;
+  border: 1px solid rgba(103, 80, 164, 0.3);
+  background: rgba(103, 80, 164, 0.12);
+  color: var(--md-on-surface);
   cursor: pointer;
 }
 
@@ -690,18 +691,18 @@ onMounted(async () => {
 }
 
 .pkg-select {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #e5e7eb;
+  background: var(--md-surface-container-low);
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  color: var(--md-on-surface);
   border-radius: 10px;
   padding: 6px 10px;
   font-size: 13px;
 }
 
 .save-btn {
-  background: rgba(108, 249, 224, 0.16);
-  border: 1px solid rgba(108, 249, 224, 0.35);
-  color: #dffdf5;
+  background: rgba(103, 80, 164, 0.12);
+  border: 1px solid rgba(103, 80, 164, 0.3);
+  color: var(--md-primary);
   padding: 8px 10px;
   border-radius: 10px;
   font-size: 12px;
@@ -717,7 +718,7 @@ onMounted(async () => {
 
 .section {
   padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(121, 116, 126, 0.2);
 }
 
 .section:last-child {
@@ -727,23 +728,23 @@ onMounted(async () => {
 .section h3 {
   margin: 0 0 8px;
   font-size: 15px;
-  color: #e5ecff;
+  color: var(--md-on-surface);
 }
 
 .asset-preview {
   padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--md-surface-container-low);
   text-align: left;
-  color: #9bb0e0;
+  color: var(--md-on-surface-variant);
   font-size: 13px;
   line-height: 1.6;
   cursor: pointer;
 }
 
 .asset-preview:hover {
-  border-color: rgba(108, 249, 224, 0.3);
+  border-color: rgba(103, 80, 164, 0.3);
 }
 
 .mb-1 { margin-bottom: 4px; }
@@ -752,9 +753,9 @@ onMounted(async () => {
 .mt-2 { margin-top: 8px; }
 .text-xs { font-size: 12px; }
 .text-sm { font-size: 14px; }
-.text-slate-100 { color: #e5ecff; }
-.text-slate-300 { color: #c7d2fe; }
-.text-slate-400 { color: #9aa8c7; }
+.text-slate-100 { color: var(--md-on-surface); }
+.text-slate-300 { color: var(--md-on-surface-variant); }
+.text-slate-400 { color: var(--md-on-surface-variant); }
 .font-semibold { font-weight: 600; }
 .leading-relaxed { line-height: 1.6; }
 .overflow-auto { overflow: auto; }
@@ -774,30 +775,30 @@ onMounted(async () => {
 .version-card {
   min-width: 180px;
   padding: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--md-surface-container-low);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .version-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(121, 116, 126, 0.35);
 }
 
 .version-card.active {
-  border-color: rgba(108, 249, 224, 0.5);
-  background: rgba(108, 249, 224, 0.08);
+  border-color: rgba(103, 80, 164, 0.5);
+  background: rgba(103, 80, 164, 0.12);
 }
 
 .version-title {
   font-size: 14px;
-  color: #e5e7eb;
+  color: var(--md-on-surface);
 }
 
 .version-meta {
   font-size: 12px;
-  color: #9aa8c7;
+  color: var(--md-on-surface-variant);
   margin-top: 4px;
 }
 
@@ -809,15 +810,15 @@ onMounted(async () => {
 }
 
 .box {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 10px;
   padding: 10px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--md-surface-container-low);
 }
 
 .object-header {
   font-size: 13px;
-  color: #cbd5f5;
+  color: var(--md-on-surface-variant);
   margin-bottom: 6px;
 }
 
@@ -828,18 +829,18 @@ onMounted(async () => {
 .right-panel textarea {
   width: 100%;
   min-height: 100px;
-  background: #0b111d;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #e5e7eb;
+  background: var(--md-surface-container-low);
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  color: var(--md-on-surface);
   border-radius: 8px;
   padding: 8px;
   resize: vertical;
 }
 
 .main-action {
-  background: rgba(108, 249, 224, 0.16);
-  border: 1px solid rgba(108, 249, 224, 0.35);
-  color: #dffdf5;
+  background: var(--md-primary);
+  border: 1px solid rgba(103, 80, 164, 0.3);
+  color: var(--md-on-primary);
   padding: 10px 12px;
   border-radius: 10px;
   cursor: pointer;
@@ -847,9 +848,9 @@ onMounted(async () => {
 }
 
 .link-btn {
-  border: 1px solid rgba(108, 249, 224, 0.35);
-  background: rgba(108, 249, 224, 0.12);
-  color: #dffdf5;
+  border: 1px solid rgba(103, 80, 164, 0.3);
+  background: rgba(103, 80, 164, 0.12);
+  color: var(--md-primary);
   padding: 10px 12px;
   border-radius: 10px;
   cursor: pointer;

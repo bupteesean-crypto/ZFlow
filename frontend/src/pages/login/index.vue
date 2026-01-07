@@ -185,7 +185,10 @@ const handleLogin = async () => {
       code: code.value,
       invite_code: loginMode.value === 'team' ? teamInvite.value : undefined,
     });
-    sessionStorage.setItem('authenticated', String(data.authenticated));
+    sessionStorage.setItem('authenticated', 'true');
+    sessionStorage.setItem('session_token', data.session_token);
+    sessionStorage.setItem('refresh_token', data.refresh_token);
+    sessionStorage.setItem('user', JSON.stringify(data.user));
     sessionStorage.setItem('sessionToken', data.session_token);
     sessionStorage.setItem('refreshToken', data.refresh_token);
     sessionStorage.setItem('userType', data.user.user_type);
@@ -212,14 +215,14 @@ const goBack = () => {
 <style scoped>
 .login-page {
   min-height: 100vh;
-  background: #05070f;
-  color: #dfe8ff;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
   padding-top: 72px;
 }
 
 .glass-nav {
-  background: linear-gradient(120deg, rgba(14, 17, 28, 0.92), rgba(9, 12, 22, 0.92));
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 251, 254, 0.9);
+  border-bottom: 1px solid rgba(121, 116, 126, 0.2);
   backdrop-filter: blur(12px);
 }
 
@@ -227,26 +230,26 @@ const goBack = () => {
   height: 36px;
   width: 36px;
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(6, 182, 212, 0.8), rgba(16, 185, 129, 0.6), rgba(29, 78, 216, 0.8));
+  background: linear-gradient(135deg, rgba(103, 80, 164, 0.85), rgba(125, 82, 96, 0.75));
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #000;
+  color: #fff;
   font-weight: bold;
 }
 
 .nav-link {
   padding: 8px 16px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #cbd5e1;
+  background: var(--md-surface-container-low);
+  border: 1px solid rgba(121, 116, 126, 0.2);
+  color: var(--md-on-surface-variant);
   text-decoration: none;
   transition: all 0.2s ease;
 }
 
 .nav-link:hover {
-  border-color: rgba(52, 211, 153, 0.4);
+  border-color: rgba(103, 80, 164, 0.35);
 }
 
 .login-main {
@@ -261,7 +264,7 @@ const goBack = () => {
   display: grid;
   grid-template-columns: 3fr 2fr;
   min-height: calc(100vh - 144px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 18px;
   overflow: hidden;
   max-width: 1000px;
@@ -271,8 +274,8 @@ const goBack = () => {
 .visual {
   position: relative;
   overflow: hidden;
-  background: #0c2f25;
-  color: #c7f4df;
+  background: var(--md-secondary-container);
+  color: var(--md-on-secondary-container);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -292,16 +295,16 @@ const goBack = () => {
   width: 36px;
   height: 36px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
-  color: #cfd7ff;
+  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface-variant);
   cursor: pointer;
   font-size: 20px;
 }
 
 .panel {
-  background: linear-gradient(145deg, rgba(12, 16, 26, 0.96), rgba(7, 10, 18, 0.96));
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--md-surface-container);
+  border-left: 1px solid rgba(121, 116, 126, 0.2);
   padding: 48px 42px;
   display: flex;
   flex-direction: column;
@@ -319,23 +322,23 @@ const goBack = () => {
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(108, 249, 224, 0.9), rgba(124, 93, 255, 0.8));
+  background: linear-gradient(135deg, rgba(103, 80, 164, 0.9), rgba(125, 82, 96, 0.8));
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  color: #05070f;
+  color: var(--md-on-primary);
 }
 
 .logo-subtitle {
   letter-spacing: 0.18em;
   font-size: 12px;
   text-transform: uppercase;
-  color: #8fa0c7;
+  color: var(--md-on-surface-variant);
 }
 
 .logo-title {
-  color: #e8eeff;
+  color: var(--md-on-surface);
   font-weight: 600;
   font-size: 16px;
 }
@@ -348,18 +351,18 @@ const goBack = () => {
 .tab {
   padding: 8px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  color: #cdd6ff;
+  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface-variant);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .tab.active {
-  border-color: rgba(108, 249, 224, 0.4);
-  background: rgba(108, 249, 224, 0.08);
-  color: #e8eeff;
+  border-color: rgba(103, 80, 164, 0.45);
+  background: rgba(103, 80, 164, 0.12);
+  color: var(--md-on-surface);
 }
 
 .login-form {
@@ -376,7 +379,7 @@ const goBack = () => {
 
 .label {
   font-size: 12px;
-  color: #7f8aaa;
+  color: var(--md-on-surface-variant);
 }
 
 .phone-input {
@@ -388,9 +391,9 @@ const goBack = () => {
 .country-code {
   padding: 12px 10px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #0b111d;
-  color: #9fb1ff;
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface-variant);
 }
 
 .code-row {
@@ -402,35 +405,35 @@ input {
   width: 100%;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: #0b111d;
-  color: #e8eeff;
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface);
   font-size: 14px;
 }
 
 input::placeholder {
-  color: #5d6786;
+  color: var(--md-on-surface-variant);
 }
 
 input:focus {
   outline: none;
-  border-color: rgba(108, 249, 224, 0.4);
+  border-color: rgba(103, 80, 164, 0.45);
 }
 
 .btn-code {
   min-width: 110px;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: #d6def7;
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  background: var(--md-surface-container);
+  color: var(--md-on-surface-variant);
   cursor: pointer;
   font-size: 13px;
   transition: all 0.2s ease;
 }
 
 .btn-code:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(103, 80, 164, 0.1);
 }
 
 .btn-code:disabled {
@@ -443,11 +446,11 @@ input:focus {
   padding: 14px;
   border: none;
   border-radius: 12px;
-  background: linear-gradient(120deg, rgba(108, 249, 224, 0.9), rgba(124, 93, 255, 0.9));
-  color: #05070f;
+  background: var(--md-primary);
+  color: var(--md-on-primary);
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 10px 30px rgba(108, 249, 224, 0.25);
+  box-shadow: 0 12px 28px rgba(103, 80, 164, 0.18);
   transition: all 0.2s ease;
 }
 
@@ -462,12 +465,12 @@ input:focus {
 
 .agreement {
   font-size: 12px;
-  color: #7a88b8;
+  color: var(--md-on-surface-variant);
   text-align: center;
 }
 
 .agreement a {
-  color: #9fb1ff;
+  color: var(--md-primary);
   text-decoration: underline;
 }
 
@@ -475,7 +478,7 @@ input:focus {
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(28, 27, 31, 0.35);
   display: none;
   align-items: center;
   justify-content: center;
@@ -489,18 +492,18 @@ input:focus {
 .modal-content {
   width: min(600px, 90vw);
   max-height: 80vh;
-  background: #0f1626;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--md-surface);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 16px;
   padding: 24px;
   overflow-y: auto;
-  color: #dfe8ff;
+  color: var(--md-on-surface);
 }
 
 .modal-close {
   float: right;
   cursor: pointer;
-  color: #9fb1ff;
+  color: var(--md-primary);
   font-size: 18px;
 }
 

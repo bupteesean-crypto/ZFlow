@@ -194,7 +194,7 @@ const truncateText = (text: string) => {
 
 .text-xs { font-size: 12px; }
 .text-sm { font-size: 14px; }
-.text-slate-200 { color: #e5e7eb; }
-.text-slate-400 { color: #9aa8c7; }
+.text-slate-200 { color: var(--md-on-surface); }
+.text-slate-400 { color: var(--md-on-surface-variant); }
 .w-full { width: 100%; }
 </style>

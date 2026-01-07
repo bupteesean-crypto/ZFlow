@@ -88,7 +88,9 @@ const router = createRouter({
 
 // Navigation guard for authentication
 router.beforeEach((to, _from, next) => {
-  const isAuthenticated = sessionStorage.getItem('authenticated') === 'true';
+  const isAuthenticated =
+    sessionStorage.getItem('authenticated') === 'true' ||
+    Boolean(sessionStorage.getItem('session_token'));
 
   // Allow access to login page
   if (to.name === 'login') {

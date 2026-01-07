@@ -1,3 +1,3 @@
-class Base:
-    # Placeholder for ORM base class.
-    pass
+from sqlalchemy.orm import declarative_base
+
+Base = declarative_base()

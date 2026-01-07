@@ -297,6 +297,8 @@ const goBack = () => {
 <style scoped>
 .editor-page {
   min-height: calc(100vh - 56px);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
 }
 
 .top-ops {
@@ -318,30 +320,30 @@ const goBack = () => {
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: #9aa8c7;
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface-variant);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .nav-link-sm:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(121, 116, 126, 0.35);
+  background: rgba(103, 80, 164, 0.08);
 }
 
 .nav-link-sm.active {
-  border-color: rgba(108, 249, 224, 0.5);
-  background: rgba(108, 249, 224, 0.15);
-  color: #e5ecff;
+  border-color: rgba(103, 80, 164, 0.5);
+  background: rgba(103, 80, 164, 0.15);
+  color: var(--md-on-surface);
 }
 
 .floating-ops {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(12, 16, 26, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--md-surface-container);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 9999px;
   padding: 8px 12px;
 }
@@ -349,28 +351,28 @@ const goBack = () => {
 .pill-btn {
   padding: 8px 14px;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  color: #e5e7eb;
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .pill-btn:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(121, 116, 126, 0.35);
+  background: rgba(103, 80, 164, 0.1);
 }
 
 .pill-btn.primary {
-  background: #fff;
-  color: #000;
+  background: var(--md-primary);
+  color: var(--md-on-primary);
   font-weight: 700;
 }
 
 .pill-btn.ghost {
   background: transparent;
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(121, 116, 126, 0.2);
 }
 
 /* Editor Layout */
@@ -382,16 +384,16 @@ const goBack = () => {
 }
 
 .editor-left {
-  background: rgba(18, 18, 24, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--md-surface-container);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 16px;
   padding: 12px;
   overflow-y: auto;
 }
 
 .editor-center {
-  background: radial-gradient(circle at center, #151518, #0e0e0f);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--md-surface-container-low);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 16px;
   display: flex;
   align-items: center;
@@ -409,7 +411,7 @@ const goBack = () => {
 .drag-bar .rail {
   width: 2px;
   height: 52px;
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(121, 116, 126, 0.4);
   border-radius: 10px;
 }
 
@@ -433,12 +435,12 @@ const goBack = () => {
 .tag {
   padding: 4px 8px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--md-surface-container-low);
+  border: 1px solid rgba(121, 116, 126, 0.2);
 }
 
 .divider {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(121, 116, 126, 0.2);
   margin-bottom: 12px;
 }
 
@@ -449,8 +451,8 @@ const goBack = () => {
 }
 
 .ai-card {
-  background: linear-gradient(180deg, #1f1f23, #141417);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--md-surface-container);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 16px;
   padding: 12px;
 }
@@ -467,7 +469,7 @@ const goBack = () => {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #e5e7eb;
+  color: var(--md-on-surface);
 }
 
 .img-preview,
@@ -475,7 +477,7 @@ const goBack = () => {
   position: relative;
   border-radius: 14px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(121, 116, 126, 0.25);
   margin-bottom: 10px;
   cursor: pointer;
 }
@@ -491,8 +493,8 @@ const goBack = () => {
 .prompt-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.6));
-  color: #e5e7eb;
+  background: linear-gradient(180deg, rgba(103, 80, 164, 0.05), rgba(28, 27, 31, 0.35));
+  color: var(--md-on-surface);
   opacity: 0;
   transition: opacity 0.2s ease;
   display: flex;
@@ -509,8 +511,8 @@ const goBack = () => {
 
 .overlay-text {
   font-size: 12px;
-  color: #dce6ff;
-  background: rgba(0, 0, 0, 0.35);
+  color: var(--md-on-surface);
+  background: rgba(103, 80, 164, 0.12);
   padding: 8px;
   border-radius: 10px;
 }
@@ -930,9 +932,9 @@ const goBack = () => {
 .justify-between { justify-content: space-between; }
 .text-xs { font-size: 12px; }
 .text-sm { font-size: 14px; }
-.text-slate-200 { color: #e5e7eb; }
-.text-slate-300 { color: #c7d2fe; }
-.text-slate-400 { color: #9aa8c7; }
+.text-slate-200 { color: var(--md-on-surface); }
+.text-slate-300 { color: var(--md-on-surface-variant); }
+.text-slate-400 { color: var(--md-on-surface-variant); }
 .font-semibold { font-weight: 600; }
 .w-10 { width: 40px; }
 .w-full { width: 100%; }

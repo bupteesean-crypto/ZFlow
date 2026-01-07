@@ -113,6 +113,7 @@ interface Journey {
   desc: string;
   status: 'progress' | 'exported';
   updatedAt: number;
+  pkgId?: string;
 }
 
 interface TeamSpace {
@@ -209,6 +210,8 @@ onMounted(async () => {
 <style scoped>
 .space-page {
   min-height: calc(100vh - 56px);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
 }
 
 .space-hero {
@@ -223,25 +226,25 @@ onMounted(async () => {
 .space-badge {
   padding: 6px 10px;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  background: var(--md-surface-container-low);
   font-size: 12px;
-  color: #a5b0d5;
+  color: var(--md-on-surface-variant);
 }
 
 .space-btn {
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
-  color: #c7d2fe;
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface);
   cursor: pointer;
   font-size: 12px;
 }
 
 .space-btn:hover {
-  border-color: rgba(108, 249, 224, 0.3);
-  background: rgba(108, 249, 224, 0.1);
+  border-color: rgba(103, 80, 164, 0.3);
+  background: rgba(103, 80, 164, 0.12);
 }
 
 .section-title {
@@ -254,15 +257,15 @@ onMounted(async () => {
 .section-title h2 {
   margin: 0;
   font-size: 18px;
-  color: #e5ecff;
+  color: var(--md-on-surface);
 }
 
 .pill {
   padding: 4px 8px;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(121, 116, 126, 0.25);
   font-size: 11px;
-  color: #9fb1ff;
+  color: var(--md-primary);
 }
 
 .space-cards {
@@ -272,29 +275,29 @@ onMounted(async () => {
 }
 
 .space-card {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 12px;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--md-surface-container);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .space-card:hover {
-  border-color: rgba(108, 249, 224, 0.3);
-  background: rgba(108, 249, 224, 0.05);
+  border-color: rgba(103, 80, 164, 0.3);
+  background: rgba(103, 80, 164, 0.08);
 }
 
 .space-card h3 {
   margin: 0 0 6px;
   font-size: 14px;
-  color: #e5ecff;
+  color: var(--md-on-surface);
 }
 
 .space-card p {
   margin: 0;
   font-size: 12px;
-  color: #8ca0c9;
+  color: var(--md-on-surface-variant);
 }
 
 .card-actions {
@@ -307,23 +310,23 @@ onMounted(async () => {
   flex: 1;
   padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
-  color: #e5ecff;
+  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface);
   cursor: pointer;
   font-size: 12px;
 }
 
 .action-btn:hover {
-  border-color: rgba(108, 249, 224, 0.3);
-  background: rgba(108, 249, 224, 0.1);
+  border-color: rgba(103, 80, 164, 0.3);
+  background: rgba(103, 80, 164, 0.12);
 }
 
 .empty-state {
   grid-column: 1 / -1;
   padding: 32px;
   text-align: center;
-  color: #6b7599;
+  color: var(--md-on-surface-variant);
   font-size: 14px;
 }
 
@@ -331,7 +334,7 @@ onMounted(async () => {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(28, 27, 31, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -340,30 +343,30 @@ onMounted(async () => {
 
 .space-selector {
   width: min(520px, 90vw);
-  background: rgba(10, 14, 24, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--md-surface-container);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 16px;
   padding: 16px;
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 30px 70px rgba(26, 18, 44, 0.2);
 }
 
 .space-option {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   padding: 10px 12px;
   border-radius: 10px;
   margin-bottom: 8px;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--md-surface-container-low);
   transition: all 0.2s ease;
 }
 
 .space-option:hover {
-  border-color: rgba(108, 249, 224, 0.35);
+  border-color: rgba(103, 80, 164, 0.3);
 }
 
 .meta {
   font-size: 12px;
-  color: #8ca0c9;
+  color: var(--md-on-surface-variant);
 }
 
 .space-grid {
@@ -377,8 +380,8 @@ onMounted(async () => {
 .text-xs { font-size: 12px; }
 .text-sm { font-size: 14px; }
 .text-lg { font-size: 18px; }
-.text-slate-100 { color: #e5ecff; }
-.text-slate-400 { color: #9aa8c7; }
+.text-slate-100 { color: var(--md-on-surface); }
+.text-slate-400 { color: var(--md-on-surface-variant); }
 .mt-1 { margin-top: 4px; }
 .mt-2 { margin-top: 8px; }
 .mb-1 { margin-bottom: 4px; }

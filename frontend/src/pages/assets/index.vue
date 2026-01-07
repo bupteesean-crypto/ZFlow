@@ -239,6 +239,8 @@ const handleBatchArchive = () => {
 <style scoped>
 .assets-page {
   min-height: calc(100vh - 56px);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
 }
 
 .asset-tabs {
@@ -251,23 +253,23 @@ const handleBatchArchive = () => {
 .asset-tab-btn {
   padding: 8px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.03);
-  color: #cdd6ff;
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface-variant);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .asset-tab-btn:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(121, 116, 126, 0.35);
+  background: rgba(103, 80, 164, 0.08);
 }
 
 .asset-tab-btn.active {
-  border-color: rgba(108, 249, 224, 0.5);
-  background: rgba(108, 249, 224, 0.1);
-  color: #e8eeff;
+  border-color: rgba(103, 80, 164, 0.5);
+  background: rgba(103, 80, 164, 0.12);
+  color: var(--md-on-surface);
 }
 
 .asset-toolbar {
@@ -280,9 +282,9 @@ const handleBatchArchive = () => {
 
 .toolbar-input,
 .toolbar-select {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #e5ecff;
+  background: var(--md-surface-container-low);
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  color: var(--md-on-surface);
   border-radius: 8px;
   padding: 8px;
   font-size: 13px;
@@ -299,16 +301,16 @@ const handleBatchArchive = () => {
 .toolbar-btn {
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-  color: #e5ecff;
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  background: var(--md-surface-container);
+  color: var(--md-on-surface);
   cursor: pointer;
   font-size: 12px;
 }
 
 .toolbar-btn:hover {
-  border-color: rgba(108, 249, 224, 0.3);
-  background: rgba(108, 249, 224, 0.1);
+  border-color: rgba(103, 80, 164, 0.3);
+  background: rgba(103, 80, 164, 0.12);
 }
 
 .asset-actions {
@@ -323,9 +325,9 @@ const handleBatchArchive = () => {
 }
 
 .asset-card {
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(121, 116, 126, 0.2);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--md-surface-container);
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -334,12 +336,12 @@ const handleBatchArchive = () => {
 }
 
 .asset-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: rgba(121, 116, 126, 0.35);
 }
 
 .asset-card.selected {
-  border-color: rgba(108, 249, 224, 0.5);
-  background: rgba(108, 249, 224, 0.08);
+  border-color: rgba(103, 80, 164, 0.45);
+  background: rgba(103, 80, 164, 0.12);
 }
 
 .asset-card header {
@@ -351,7 +353,7 @@ const handleBatchArchive = () => {
 
 .asset-meta {
   font-size: 11px;
-  color: #64748b;
+  color: var(--md-on-surface-variant);
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
@@ -361,21 +363,21 @@ const handleBatchArchive = () => {
   padding: 4px 8px;
   border-radius: 8px;
   font-size: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #e5ecff;
-  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  color: var(--md-on-surface-variant);
+  background: var(--md-surface-container-low);
 }
 
 .asset-preview {
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: var(--md-surface-container-low);
   min-height: 80px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #9bb0e0;
+  color: var(--md-on-surface-variant);
   font-size: 32px;
   text-align: center;
   padding: 8px;
@@ -403,23 +405,23 @@ const handleBatchArchive = () => {
   flex: 1;
   padding: 6px 8px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
-  color: #0f172a;
+  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: var(--md-surface-container-low);
+  color: var(--md-on-surface);
   font-size: 11px;
   cursor: pointer;
 }
 
 .asset-card-actions button:hover {
-  border-color: rgba(108, 249, 224, 0.4);
-  background: rgba(108, 249, 224, 0.15);
+  border-color: rgba(103, 80, 164, 0.35);
+  background: rgba(103, 80, 164, 0.15);
 }
 
 .empty-state {
   grid-column: 1 / -1;
   padding: 32px;
   text-align: center;
-  color: #6b7599;
+  color: var(--md-on-surface-variant);
   font-size: 14px;
 }
 
@@ -427,7 +429,7 @@ const handleBatchArchive = () => {
 .font-semibold { font-weight: 600; }
 .text-xs { font-size: 12px; }
 .text-sm { font-size: 14px; }
-.text-slate-400 { color: #9aa8c7; }
+.text-slate-400 { color: var(--md-on-surface-variant); }
 .m-0 { margin: 0; }
 .mt-2 { margin-top: 8px; }
 .mb-1 { margin-bottom: 4px; }

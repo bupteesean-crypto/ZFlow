@@ -1,3 +1,5 @@
+# app/db/init_db.py
+
 import logging
 
 from app.db.base import Base
@@ -8,10 +10,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("init_db")
 
 
-def main() -> None:
+def init_db():
+    logger.info("Creating database tables...")
     Base.metadata.create_all(bind=engine)
-    logger.info("Database schema initialized.")
+    logger.info("Done.")
 
 
 if __name__ == "__main__":
-    main()
+    init_db()
