@@ -620,6 +620,9 @@ async def generate_storyboard_videos(
         if not image_url:
             skipped.append({"shot_id": shot_key, "reason": "missing_storyboard_image"})
             continue
+        if not (image_url.startswith("http://") or image_url.startswith("https://")):
+            skipped.append({"shot_id": shot_key, "reason": "invalid_storyboard_image_url"})
+            continue
 
         scene_id = shot.get("scene_id") if isinstance(shot.get("scene_id"), str) else ""
         scene = scene_by_id.get(scene_id, {}) if scene_id else {}
@@ -679,6 +682,51 @@ async def generate_storyboard_videos(
         raise HTTPException(status_code=500, detail="Database error")
 
     return ok({"generated": generated, "skipped": skipped, "material_package_id": package_id})
+
+
+@router.get("/material-packages/{package_id}/storyboard-videos/{task_id}")
+async def get_storyboard_video_result(
+    package_id: str,
+    task_id: str,
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    if not task_id.strip():
+        raise HTTPException(status_code=400, detail="task_id required")
+    try:
+        package = package_repo.get_package(db, package_id)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+    if not package:
+        raise HTTPException(status_code=404, detail="Material package not found")
+
+    materials = package.get("materials") if isinstance(package.get("materials"), dict) else {}
+    metadata = materials.get("metadata") if isinstance(materials.get("metadata"), dict) else {}
+    videos = metadata.get("videos") if isinstance(metadata.get("videos"), list) else []
+    videos = [video for video in videos if isinstance(video, dict)]
+
+    target = next((video for video in videos if video.get("task_id") == task_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Video task not found")
+
+    task_result = video_service.get_video_task_result(task_id)
+    if task_result.get("task_status"):
+        target["task_status"] = task_result.get("task_status")
+    if task_result.get("video_url"):
+        target["url"] = task_result.get("video_url")
+    if task_result.get("cover_image_url"):
+        target["cover_image_url"] = task_result.get("cover_image_url")
+
+    metadata["videos"] = videos
+    materials["metadata"] = metadata
+
+    try:
+        package_repo.update_package(db, package_id, {"materials": materials})
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+
+    return ok({"task": task_result, "video": target, "material_package_id": package_id})
 
 
 @router.post("/material-packages/{package_id}/feedback")

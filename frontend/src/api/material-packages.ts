@@ -93,6 +93,19 @@ export async function generateStoryboardVideos(
   return data.data;
 }
 
+export async function fetchStoryboardVideoTask(
+  packageId: string,
+  taskId: string
+): Promise<{ task: Record<string, unknown>; video: Record<string, unknown>; material_package_id: string }> {
+  const { data } = await request.get<
+    ApiResponse<{ task: Record<string, unknown>; video: Record<string, unknown>; material_package_id: string }>
+  >(`/material-packages/${packageId}/storyboard-videos/${taskId}`);
+  if (data.code !== 0) {
+    throw new Error(data.message || "Failed to fetch storyboard video task");
+  }
+  return data.data;
+}
+
 export async function updateMaterialPackage(
   packageId: string,
   payload: Partial<MaterialPackage>

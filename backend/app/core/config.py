@@ -44,6 +44,7 @@ class Settings:
     vidu_api_base: str = os.getenv("VIDU_API_BASE", "https://open.bigmodel.cn/api/paas/v4")
     vidu_api_key: str = os.getenv("VIDU_API_KEY", "")
     vidu_video_endpoint: str = os.getenv("VIDU_VIDEO_ENDPOINT", "")
+    vidu_async_result_endpoint: str = os.getenv("VIDU_ASYNC_RESULT_ENDPOINT", "")
     vidu_video_model: str = os.getenv("VIDU_VIDEO_MODEL", "viduq2-pro-img2video")
     vidu_video_default_size: str = os.getenv("VIDU_VIDEO_DEFAULT_SIZE", "960x1280")
     runway_api_key: str = os.getenv("RUNWAY_API_KEY", "")

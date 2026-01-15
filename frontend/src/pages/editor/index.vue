@@ -98,7 +98,7 @@
             <div class="info-title">片段操作</div>
             <div class="action-row">
               <button class="pill-btn primary" @click="playCurrentClip">
-                {{ isPlaying && playMode === 'clip' ? '暂停当前分镜' : '播放当前分镜' }}
+                {{ isPlaying && (playMode === 'clip' || playMode === 'video') ? '暂停当前分镜' : '播放当前分镜' }}
               </button>
               <button class="pill-btn" @click="jumpToTimeline">定位到时间轴</button>
             </div>
@@ -114,6 +114,9 @@
               >
                 生成视频
               </button>
+              <span class="video-status-note" :class="{ failed: currentVideoState.status === 'failed' }">
+                {{ videoStatusLabel }}
+              </span>
             </div>
           </div>
 
@@ -170,8 +173,17 @@
           </button>
           <div class="time-pill">{{ formatTime(currentTimeSec) }} / {{ formatTime(totalDuration) }}</div>
         </div>
-        <div class="canvas" :class="{ empty: !currentClip?.imageUrl }">
-          <img v-if="currentClip?.imageUrl" :src="currentClip.imageUrl" alt="分镜画面" class="canvas-image" />
+        <div class="canvas" :class="{ empty: !currentClip?.imageUrl && !hasReadyVideo }">
+          <video
+            v-if="hasReadyVideo"
+            ref="videoRef"
+            :src="currentVideoState.videoUrl"
+            class="canvas-video"
+            controls
+            playsinline
+            @ended="handleVideoEnded"
+          ></video>
+          <img v-else-if="currentClip?.imageUrl" :src="currentClip.imageUrl" alt="分镜画面" class="canvas-image" />
           <div v-else class="canvas-placeholder">待生成画面</div>
           <div class="canvas-overlay">
             <div class="overlay-title">镜头 {{ currentClip?.sequenceLabel || '-' }}</div>
@@ -193,6 +205,14 @@
         </div>
         <div class="timeline-actions">
           <span v-if="isGeneratingStoryboard" class="timeline-status">正在生成分镜画面…</span>
+          <span v-else-if="storyboardError" class="timeline-error">{{ storyboardError }}</span>
+          <button
+            class="pill-btn"
+            :disabled="clips.length === 0 || isGeneratingStoryboard"
+            @click="forceRegenerateStoryboard"
+          >
+            强制重生成分镜
+          </button>
           <button class="pill-btn" @click="togglePlayAll" :disabled="clips.length === 0">
             {{ isPlaying && playMode === 'all' ? '暂停' : '播放' }}
           </button>
@@ -300,6 +320,7 @@ import { useRouter } from 'vue-router';
 import {
   fetchMaterialPackage,
   fetchMaterialPackages,
+  fetchStoryboardVideoTask,
   generateStoryboardImages,
   generateStoryboardVideos,
   type MaterialPackage,
@@ -341,6 +362,7 @@ const timelineRef = ref<HTMLElement | null>(null);
 const currentClip = computed(() => clips.value[currentShotIndex.value] || null);
 const isGeneratingStoryboard = ref(false);
 const storyboardGenerationAttempted = ref(false);
+const storyboardError = ref('');
 const isEditingPrompt = ref(false);
 const isImagePromptOpen = ref(false);
 const isVideoPromptOpen = ref(false);
@@ -352,7 +374,7 @@ const isBulkGeneratingVideo = ref(false);
 const showImageFeedbackModal = ref(false);
 const showVideoFeedbackModal = ref(false);
 
-type VideoStatus = 'none' | 'processing' | 'ready';
+type VideoStatus = 'none' | 'processing' | 'ready' | 'failed';
 type VideoState = {
   status: VideoStatus;
   prompt: string;
@@ -360,6 +382,8 @@ type VideoState = {
   taskStatus?: string;
   videoId?: string;
   taskId?: string;
+  videoUrl?: string;
+  coverImageUrl?: string;
   provider?: string;
   size?: string;
 };
@@ -401,11 +425,26 @@ const currentVideoState = computed(() => {
   }
   return videoState.value[currentClip.value.shotId] || defaultVideoStateForClip(currentClip.value);
 });
+const hasReadyVideo = computed(() => {
+  const state = currentVideoState.value;
+  return Boolean(state && state.status === 'ready' && state.videoUrl);
+});
 
 const isPlaying = ref(false);
-const playMode = ref<'all' | 'clip' | null>(null);
+const playMode = ref<'all' | 'clip' | 'video' | null>(null);
 const playRange = ref<{ start: number; end: number; mode: 'all' | 'clip' } | null>(null);
 let playTimer: number | null = null;
+let videoPollTimer: number | null = null;
+const videoRef = ref<HTMLVideoElement | null>(null);
+
+const videoStatusLabel = computed(() => {
+  if (!currentClip.value) return '';
+  const state = videoState.value[currentClip.value.shotId];
+  if (!state || state.status === 'none') return '未生成视频';
+  if (state.status === 'failed') return '生成失败';
+  if (state.status === 'processing') return '生成中…';
+  return '已生成';
+});
 
 const formatTime = (seconds: number) => {
   if (!Number.isFinite(seconds)) return '00:00';
@@ -421,9 +460,19 @@ const stopPlayback = () => {
     window.clearInterval(playTimer);
     playTimer = null;
   }
+  if (videoRef.value && !videoRef.value.paused) {
+    videoRef.value.pause();
+  }
   isPlaying.value = false;
   playMode.value = null;
   playRange.value = null;
+};
+
+const stopVideoPolling = () => {
+  if (videoPollTimer !== null) {
+    window.clearInterval(videoPollTimer);
+    videoPollTimer = null;
+  }
 };
 
 const pausePlayback = () => {
@@ -431,7 +480,18 @@ const pausePlayback = () => {
     window.clearInterval(playTimer);
     playTimer = null;
   }
+  if (playMode.value === 'video' && videoRef.value && !videoRef.value.paused) {
+    videoRef.value.pause();
+    playMode.value = null;
+  }
   isPlaying.value = false;
+};
+
+const handleVideoEnded = () => {
+  if (playMode.value === 'video') {
+    isPlaying.value = false;
+    playMode.value = null;
+  }
 };
 
 const updateShotByTime = (time: number) => {
@@ -473,8 +533,78 @@ const resumePlayback = () => {
   startPlayback(currentTimeSec.value, playRange.value.end, playRange.value.mode);
 };
 
+const updateVideoStateFromTask = (shotId: string, task: Record<string, unknown>, video: Record<string, unknown>) => {
+  const taskStatus = normalizeText(task?.task_status ?? video?.task_status, '');
+  const videoUrl = normalizeText(video?.url ?? task?.video_url, '');
+  const coverImageUrl = normalizeText(video?.cover_image_url ?? task?.cover_image_url, '');
+  let status: VideoStatus = 'processing';
+  if (taskStatus === 'SUCCESS' || videoUrl) {
+    status = 'ready';
+  } else if (taskStatus === 'FAIL') {
+    status = 'failed';
+  }
+  const prev = videoState.value[shotId];
+  videoState.value = {
+    ...videoState.value,
+    [shotId]: {
+      status,
+      prompt: prev?.prompt || '',
+      feedback: prev?.feedback || '',
+      taskStatus: taskStatus || undefined,
+      videoId: normalizeText(video?.id, prev?.videoId || '') || prev?.videoId,
+      taskId: normalizeText(task?.task_id ?? task?.id ?? video?.task_id ?? prev?.taskId, '') || prev?.taskId,
+      videoUrl: videoUrl || prev?.videoUrl,
+      coverImageUrl: coverImageUrl || prev?.coverImageUrl,
+      provider: normalizeText(video?.provider, prev?.provider || '') || prev?.provider,
+      size: normalizeText(video?.size, prev?.size || '') || prev?.size,
+    },
+  };
+};
+
+const pollVideoTasks = async () => {
+  if (!currentPackageId.value) return;
+  const entries = Object.entries(videoState.value).filter(
+    ([, state]) => state?.status === 'processing' && state.taskId
+  );
+  if (!entries.length) {
+    stopVideoPolling();
+    return;
+  }
+
+  try {
+    const results = await Promise.all(
+      entries.map(([, state]) => fetchStoryboardVideoTask(currentPackageId.value as string, state.taskId as string))
+    );
+    results.forEach(result => {
+      const video = (result.video || {}) as Record<string, unknown>;
+      const shotId = normalizeText(video.shot_id ?? video.shotId, '');
+      if (!shotId) return;
+      updateVideoStateFromTask(shotId, result.task || {}, video);
+    });
+  } catch (err) {
+    console.warn(err);
+  }
+};
+
+const syncVideoPolling = () => {
+  if (!currentPackageId.value) {
+    stopVideoPolling();
+    return;
+  }
+  const hasProcessing = Object.values(videoState.value).some(state => state?.status === 'processing' && state.taskId);
+  if (hasProcessing && videoPollTimer === null) {
+    pollVideoTasks();
+    videoPollTimer = window.setInterval(pollVideoTasks, 5000);
+  } else if (!hasProcessing) {
+    stopVideoPolling();
+  }
+};
+
 const togglePlayAll = () => {
   if (!clips.value.length) return;
+  if (playMode.value === 'video') {
+    stopPlayback();
+  }
   if (playMode.value === 'all') {
     if (isPlaying.value) {
       pausePlayback();
@@ -488,6 +618,27 @@ const togglePlayAll = () => {
 
 const playCurrentClip = () => {
   if (!currentClip.value) return;
+  if (hasReadyVideo.value) {
+    const video = videoRef.value;
+    if (!video) return;
+    if (playMode.value === 'video' && isPlaying.value) {
+      video.pause();
+      isPlaying.value = false;
+      playMode.value = null;
+      return;
+    }
+    stopPlayback();
+    playMode.value = 'video';
+    isPlaying.value = true;
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch(() => {
+        isPlaying.value = false;
+        playMode.value = null;
+      });
+    }
+    return;
+  }
   if (playMode.value === 'clip' && isPlaying.value) {
     pausePlayback();
     return;
@@ -561,6 +712,14 @@ watch(
     showVideoFeedbackModal.value = false;
   },
   { immediate: true }
+);
+
+watch(
+  () => videoState.value,
+  () => {
+    syncVideoPolling();
+  },
+  { deep: true }
 );
 
 const normalizeText = (value: unknown, fallback = '') => {
@@ -705,11 +864,15 @@ const buildVideoStateFromPackage = (pkg: MaterialPackage, clipList: Clip[]) => {
       candidates[0];
     if (active && typeof active === 'object') {
       const taskStatus = normalizeText(active.task_status, '');
+      const videoUrl = normalizeText(active.url || active.video_url, '');
+      const coverImageUrl = normalizeText(active.cover_image_url || active.coverImageUrl, '');
       const status: VideoStatus = taskStatus
         ? taskStatus === 'SUCCESS'
           ? 'ready'
+          : taskStatus === 'FAIL'
+          ? 'failed'
           : 'processing'
-        : active.url || active.video_url
+        : videoUrl
         ? 'ready'
         : 'processing';
       nextState[clip.shotId] = {
@@ -719,6 +882,8 @@ const buildVideoStateFromPackage = (pkg: MaterialPackage, clipList: Clip[]) => {
         taskStatus: taskStatus || undefined,
         videoId: normalizeText(active.id, '') || undefined,
         taskId: normalizeText(active.task_id, '') || undefined,
+        videoUrl: videoUrl || undefined,
+        coverImageUrl: coverImageUrl || undefined,
         provider: normalizeText(active.provider, '') || undefined,
         size: normalizeText(active.size, '') || undefined,
       };
@@ -779,11 +944,32 @@ const ensureStoryboardImages = async (pkg: MaterialPackage) => {
   if (!hasMissingStoryboardImages(pkg)) return;
   storyboardGenerationAttempted.value = true;
   isGeneratingStoryboard.value = true;
+  storyboardError.value = '';
   try {
-    await generateStoryboardImages(pkg.id);
+    const result = await generateStoryboardImages(pkg.id);
+    if (!result.generated || result.generated.length === 0) {
+      storyboardError.value = '分镜图生成失败，可能素材图不可访问或模型返回为空';
+    }
     await refreshPackage(pkg.id);
   } catch (err) {
-    // Keep placeholders if generation fails.
+    storyboardError.value = err instanceof Error ? err.message : '分镜图生成失败，请稍后重试';
+  } finally {
+    isGeneratingStoryboard.value = false;
+  }
+};
+
+const forceRegenerateStoryboard = async () => {
+  if (!currentPackageId.value) return;
+  isGeneratingStoryboard.value = true;
+  storyboardError.value = '';
+  try {
+    const result = await generateStoryboardImages(currentPackageId.value, true);
+    if (!result.generated || result.generated.length === 0) {
+      storyboardError.value = '分镜图生成失败，可能素材图不可访问或模型返回为空';
+    }
+    await refreshPackage(currentPackageId.value);
+  } catch (err) {
+    storyboardError.value = err instanceof Error ? err.message : '分镜图生成失败，请稍后重试';
   } finally {
     isGeneratingStoryboard.value = false;
   }
@@ -920,6 +1106,7 @@ const hasVideoForShot = (shotId: string) => {
 const videoBadgeLabel = (shotId: string) => {
   const state = videoState.value[shotId];
   if (!state || state.status === 'none') return '图片';
+  if (state.status === 'failed') return '失败';
   if (state.status === 'processing') return '视频中';
   return '视频';
 };
@@ -961,6 +1148,7 @@ const loadEditorData = async () => {
       packageName.value = '';
       currentPackageId.value = null;
       videoState.value = {};
+      storyboardError.value = '';
       stopPlayback();
       return;
     }
@@ -975,6 +1163,7 @@ const loadEditorData = async () => {
     currentTimeSec.value = 0;
   } catch (err) {
     clips.value = [];
+    storyboardError.value = err instanceof Error ? err.message : '素材包加载失败';
     videoState.value = {};
   }
 };
@@ -989,6 +1178,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopPlayback();
+  stopVideoPolling();
 });
 </script>
 
@@ -1335,6 +1525,13 @@ onUnmounted(() => {
   object-fit: cover;
 }
 
+.canvas-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+
 .canvas-placeholder {
   font-size: 14px;
   color: var(--md-on-surface-variant);
@@ -1404,6 +1601,15 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.video-status-note {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+}
+
+.video-status-note.failed {
+  color: #d65b5b;
+}
+
 .timeline-status {
   font-size: 11px;
   color: #fbbf24;
@@ -1411,6 +1617,15 @@ onUnmounted(() => {
   padding: 4px 8px;
   border-radius: 9999px;
   border: 1px solid rgba(251, 146, 60, 0.35);
+}
+
+.timeline-error {
+  font-size: 11px;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.15);
+  padding: 4px 8px;
+  border-radius: 9999px;
+  border: 1px solid rgba(248, 113, 113, 0.35);
 }
 
 .timeline-meta {
