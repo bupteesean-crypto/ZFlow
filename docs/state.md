@@ -113,6 +113,8 @@ When updating state.md, AI MUST:
 - Added a structured LLM prompt contract (summary/storyline/keywords) with safe JSON parsing and fallback to plain text.
 - Stored structured LLM output inside material package materials metadata while keeping storyline fields for backward compatibility.
 - Moved the LLM system prompt into a reusable prompt asset and added metadata placeholders for future image/video plans.
+- Added a sequential text → image pipeline: derive image_plan from LLM output, call Seedream, and persist image metadata under materials.metadata.images.
+- Updated Seedream integration to use the confirmed API contract (doubao-seedream-4.0, size=2K, configurable API base/model).
 
 ## Current Capabilities
 
@@ -147,6 +149,8 @@ When updating state.md, AI MUST:
 - Generation start accepts prompt input and surfaces GLM output in material package storyline text.
 - Generation stores structured summary/storyline/keywords in material package materials metadata for future expansion.
 - Materials metadata now reserves empty image/video plan placeholders for future generation stages.
+- Text + image generation now runs sequentially in the backend pipeline.
+- Generation now includes image_plan and optional images metadata alongside storyline text.
 
 ## Known Limitations
 
@@ -184,7 +188,10 @@ When updating state.md, AI MUST:
 - Generation progress remains simulated even when LLM output is used.
 - Structured LLM output parsing is best-effort; invalid JSON falls back to plain text.
 - Structured metadata is stored inside materials JSON, not a dedicated column.
-- Image/video plan metadata is a placeholder only; no generation logic exists for these stages.
+- Image/video plan metadata is mostly placeholder; image generation is best-effort and video remains unimplemented.
+- Seedream integration is best-effort; image failures are logged and do not block text generation.
+- Seedream response parsing assumes the documented response structure; unexpected shapes fall back to no image.
+- Image generation is limited to a single Seedream image with minimal controls.
 
 ## Next Confirmed Steps
 
@@ -205,5 +212,7 @@ When updating state.md, AI MUST:
 - Run the full frontend flow in a browser and confirm logs match project/package events.
 - Run a live GLM-backed generation to verify content is returned and stored in material packages.
 - Validate GLM error handling against missing/invalid credentials in a runtime environment.
+- Improve frontend rendering for generated images and add multi-image support.
 - Run the landing → materials flow in a live browser to confirm GLM text renders after generation.
 - Validate structured JSON output from GLM in a live browser flow.
+- Confirm scope for a text → image pipeline (image_plan + Seedream integration) before implementation.

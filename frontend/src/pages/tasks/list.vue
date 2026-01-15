@@ -9,9 +9,14 @@
       <button type="submit" :disabled="creating">Create task</button>
     </form>
 
-    <p v-if="loading">Loading...</p>
-    <p v-else-if="error">Error: {{ error }}</p>
-    <div v-else>
+    <AsyncState
+      :loading="loading"
+      :error="error"
+      :empty="tasks.length === 0"
+      empty-title="暂无任务"
+      empty-text="还没有任务，创建一个试试。"
+      @retry="loadTasks(true)"
+    >
       <table v-if="tasks.length">
         <thead>
           <tr>
@@ -34,8 +39,7 @@
           </tr>
         </tbody>
       </table>
-      <p v-else>No tasks yet.</p>
-    </div>
+    </AsyncState>
   </section>
 </template>
 
@@ -44,6 +48,7 @@ import { onMounted, onUnmounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 
 import { createTask, fetchTasks } from "../../api/tasks";
+import AsyncState from "../../components/common/AsyncState.vue";
 
 type Task = {
   id?: string | number;

@@ -1,23 +1,205 @@
 import logging
 import time
+from queue import Empty
 from typing import Any, Dict
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
+from starlette.responses import StreamingResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.v1.response import ok
+from app.core.config import settings
 from app.core.events import emit_event, new_trace_id
 from app.db.models import utc_now as db_utc_now
 from app.db.session import SessionLocal, get_db
 from app.repositories import material_packages as package_repo
 from app.repositories import projects as project_repo
+from app.services.blueprint_service import build_blueprint
+from app.services.generation_events import (
+    format_sse,
+    publish_generation_event,
+    reset_generation_events,
+    subscribe_generation_events,
+    unsubscribe_generation_events,
+)
+from app.services.image_service import ImageService
 from app.services.llm_service import LLMService
 from app.store import GENERATION_TASKS, GENERATION_TRACES, new_id, utc_now
 
 router = APIRouter(prefix="/generation", tags=["generation"])
 llm_service = LLMService()
+image_service = ImageService()
 logger = logging.getLogger(__name__)
+
+SCENE_QUALITY_CONSTRAINTS = (
+    "no text, no captions, no logos, no watermark\n"
+    "no people, no characters, empty environment\n"
+    "avoid low-quality artifacts or distortion\n"
+    "avoid malformed anatomy or extra limbs\n"
+    "no busy patterns"
+)
+CHARACTER_QUALITY_CONSTRAINTS = (
+    "no text, no captions, no logos, no watermark\n"
+    "avoid low-quality artifacts or distortion\n"
+    "avoid malformed anatomy or extra limbs\n"
+    "front view, side view, back view in one canvas\n"
+    "front shows face and torso, side shows profile silhouette, back shows hair and back details\n"
+    "evenly spaced, same scale and proportions\n"
+    "consistent line weight and lighting\n"
+    "neutral background"
+)
+
+STEP_PROGRESS = {
+    "outline": 10,
+    "art_style": 20,
+    "characters": 30,
+    "character_images": 45,
+    "scenes": 60,
+    "scene_images": 80,
+    "storyboard": 90,
+    "done": 100,
+}
+
+
+def _emit_step(project_id: str, step: str, status: str, message: str) -> None:
+    publish_generation_event(
+        project_id,
+        {
+            "type": "generation.step",
+            "step": step,
+            "status": status,
+            "message": message,
+        },
+    )
+
+
+def _update_task(task_id: str, status: str | None = None, progress: int | None = None) -> None:
+    task = GENERATION_TASKS.get(task_id)
+    if not task:
+        return
+    if status:
+        task["status"] = status
+    if progress is not None:
+        task["progress"] = progress
+    task["updated_at"] = utc_now()
+
+
+def _join_keywords(keywords: list[str]) -> str:
+    return ", ".join([item for item in keywords if isinstance(item, str) and item.strip()])
+
+
+def _build_scene_prompt_parts(scene: dict, blueprint: dict) -> dict:
+    summary = blueprint.get("summary", {}) if isinstance(blueprint, dict) else {}
+    art_style = blueprint.get("art_style", {}) if isinstance(blueprint, dict) else {}
+    description = scene.get("description") or summary.get("synopsis") or ""
+    mood = scene.get("mood") or "neutral"
+    keywords = summary.get("keywords") if isinstance(summary.get("keywords"), list) else []
+    content_lines = [f"Scene summary: {description}", f"Mood: {mood}"]
+    keywords_text = _join_keywords(keywords)
+    if keywords_text:
+        content_lines.append(f"Keywords: {keywords_text}")
+
+    style_prompt = art_style.get("style_prompt") if isinstance(art_style, dict) else ""
+    style_prompt = style_prompt.strip() if isinstance(style_prompt, str) else ""
+    palette = art_style.get("palette") if isinstance(art_style, dict) else []
+    palette = [str(item).strip() for item in palette if str(item).strip()] if isinstance(palette, list) else []
+    if palette:
+        palette_line = f"Palette: {', '.join(palette)}"
+        style_prompt = f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
+
+    return {
+        "content": "\n".join(content_lines).strip(),
+        "style": style_prompt or "",
+        "constraints": SCENE_QUALITY_CONSTRAINTS,
+    }
+
+
+def _build_character_prompt_parts(subject: dict, blueprint: dict, sheet_prompt: str) -> dict:
+    art_style = blueprint.get("art_style", {}) if isinstance(blueprint, dict) else {}
+    name = subject.get("name") or "Character"
+    description = subject.get("description") or ""
+    traits = subject.get("visual_traits") if isinstance(subject.get("visual_traits"), list) else []
+    traits_text = _join_keywords([str(item) for item in traits]) if traits else ""
+    content_lines = [
+        f"Character: {name}",
+        f"Description: {description}",
+        "Turnaround: front / side / back in one canvas",
+        "Front: face and torso details; Side: profile and silhouette; Back: hair and back details",
+    ]
+    if traits_text:
+        content_lines.append(f"Visual traits: {traits_text}")
+    if sheet_prompt:
+        content_lines.append(f"Prompt: {sheet_prompt}")
+
+    style_prompt = art_style.get("style_prompt") if isinstance(art_style, dict) else ""
+    style_prompt = style_prompt.strip() if isinstance(style_prompt, str) else ""
+    palette = art_style.get("palette") if isinstance(art_style, dict) else []
+    palette = [str(item).strip() for item in palette if str(item).strip()] if isinstance(palette, list) else []
+    if palette:
+        palette_line = f"Palette: {', '.join(palette)}"
+        style_prompt = f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
+
+    return {
+        "content": "\n".join(content_lines).strip(),
+        "style": style_prompt or "",
+        "constraints": CHARACTER_QUALITY_CONSTRAINTS,
+    }
+
+
+def _build_character_sheet_prompt(subject: dict, blueprint: dict) -> str:
+    art_style = blueprint.get("art_style", {}) if isinstance(blueprint, dict) else {}
+    name = subject.get("name") or "Character"
+    description = subject.get("description") or ""
+    traits = subject.get("visual_traits") if isinstance(subject.get("visual_traits"), list) else []
+    traits_text = _join_keywords([str(item) for item in traits]) if traits else ""
+    style_prompt = art_style.get("style_prompt") if isinstance(art_style, dict) else ""
+    style_prompt = style_prompt.strip() if isinstance(style_prompt, str) else ""
+    palette = art_style.get("palette") if isinstance(art_style, dict) else []
+    palette = [str(item).strip() for item in palette if str(item).strip()] if isinstance(palette, list) else []
+    if palette:
+        palette_line = f"Palette: {', '.join(palette)}"
+        style_prompt = f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
+
+    lines = [
+        "Create a clean 3:4 portrait character turnaround sheet for a single character.",
+        "",
+        f"Character: {name}",
+        f"Description: {description}",
+    ]
+    if traits_text:
+        lines.append(f"Visual traits: {traits_text}")
+    if style_prompt:
+        lines.append(f"Style: {style_prompt}")
+    lines.extend(
+        [
+            "",
+            "Composition:",
+            "- front view, side view, back view in one canvas",
+            "- front shows facial features and torso; side shows profile silhouette; back shows hair and back details",
+            "- evenly spaced, same scale, consistent proportions",
+            "- full-body views, centered",
+            "- neutral background, uniform lighting",
+            "",
+            "Constraints:",
+            "- no text, no captions, no logos, no watermark",
+            "- avoid extra limbs or distorted anatomy",
+        ]
+    )
+    return "\n".join([line for line in lines if line is not None]).strip()
+
+
+def _next_package_version(items: list[dict]) -> int:
+    max_version = 0
+    for item in items:
+        materials = item.get("materials") if isinstance(item, dict) else {}
+        metadata = materials.get("metadata") if isinstance(materials, dict) else {}
+        version = metadata.get("package_version") if isinstance(metadata, dict) else None
+        if isinstance(version, int) and version > max_version:
+            max_version = version
+    if max_version == 0 and items:
+        return len(items) + 1
+    return max_version + 1
 
 
 def _simulate_generation(task_id: str) -> None:
@@ -107,6 +289,278 @@ def _simulate_generation(task_id: str) -> None:
         db.close()
 
 
+def _run_generation_task(
+    project_id: str,
+    llm_input: str,
+    mode: str,
+    documents: list,
+    task_id: str,
+    trace_id: str,
+) -> None:
+    db = SessionLocal()
+    current_step = "outline"
+    error_sent = False
+    reset_generation_events(project_id)
+    _update_task(task_id, status="running", progress=0)
+    _emit_step(project_id, "outline", "started", "正在理解你的创作意图…")
+    emit_event(
+        "generation.progressed",
+        {
+            "project_id": project_id,
+            "task_id": task_id,
+            "progress": 0,
+            "status": "running",
+        },
+        trace_id=trace_id,
+    )
+    try:
+        started_at = time.perf_counter()
+        llm_result = llm_service.generate_material_package(str(llm_input), mode, documents=documents)
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+        logger.info(
+            "generation stage=llm project_id=%s mode=%s duration_ms=%s",
+            project_id,
+            mode,
+            duration_ms,
+        )
+
+        llm_payload = llm_result if isinstance(llm_result, dict) else {}
+        blueprint = build_blueprint(llm_payload, source_prompt=llm_input)
+
+        _emit_step(project_id, "outline", "completed", "故事梗概已完成")
+        current_step = "outline"
+        _update_task(task_id, progress=STEP_PROGRESS["outline"])
+        _emit_step(project_id, "art_style", "completed", "美术风格已确定")
+        current_step = "art_style"
+        _update_task(task_id, progress=STEP_PROGRESS["art_style"])
+        image_size = settings.seedream_default_size or "960x1280"
+        _emit_step(project_id, "characters", "completed", "角色设定已完成")
+        current_step = "characters"
+        _update_task(task_id, progress=STEP_PROGRESS["characters"])
+
+        _emit_step(project_id, "character_images", "started", "正在生成角色三视图…")
+        current_step = "character_images"
+        images: list[dict] = []
+        for subject in blueprint.get("subjects", []):
+            subject_id = subject.get("id")
+            subject_name = subject.get("name")
+            sheet_prompt = _build_character_sheet_prompt(subject, blueprint) or blueprint["summary"]["logline"]
+            image_result = None
+            try:
+                image_result = image_service.generate_image(sheet_prompt, size=image_size)
+            except Exception:
+                logger.exception(
+                    "generation stage=character_sheet failed project_id=%s subject_id=%s",
+                    project_id,
+                    subject_id,
+                )
+            if not isinstance(image_result, dict) or not image_result.get("url"):
+                raise ValueError("Character image generation failed")
+            prompt_parts = _build_character_prompt_parts(subject, blueprint, sheet_prompt)
+            images.append(
+                {
+                    "id": new_id(),
+                    "type": "character_sheet",
+                    "subject_id": subject_id,
+                    "subject_name": subject_name,
+                    "url": image_result.get("url"),
+                    "prompt": image_result.get("prompt") or sheet_prompt,
+                    "prompt_parts": prompt_parts,
+                    "provider": image_result.get("provider"),
+                    "model": image_result.get("model"),
+                    "size": image_result.get("size"),
+                }
+            )
+        _emit_step(project_id, "character_images", "completed", "角色三视图已生成")
+        current_step = "character_images"
+        _update_task(task_id, progress=STEP_PROGRESS["character_images"])
+
+        _emit_step(project_id, "scenes", "completed", "场景设定已完成")
+        current_step = "scenes"
+        _update_task(task_id, progress=STEP_PROGRESS["scenes"])
+
+        _emit_step(project_id, "scene_images", "started", "正在生成场景空间图…")
+        current_step = "scene_images"
+        for scene in blueprint.get("scenes", []):
+            scene_id = scene.get("id")
+            scene_prompt = scene.get("prompt_hint") or scene.get("description") or blueprint["summary"]["logline"]
+            logger.info("generation stage=image_plan project_id=%s scene_id=%s", project_id, scene_id)
+            image_result = None
+            try:
+                image_started_at = time.perf_counter()
+                image_result = image_service.generate_image(scene_prompt, size=image_size)
+                image_duration_ms = int((time.perf_counter() - image_started_at) * 1000)
+                logger.info(
+                    "generation stage=image_gen project_id=%s scene_id=%s duration_ms=%s request_id=%s",
+                    project_id,
+                    scene_id,
+                    image_duration_ms,
+                    (image_result or {}).get("request_id"),
+                )
+            except Exception:
+                logger.exception(
+                    "generation stage=image_gen failed project_id=%s scene_id=%s",
+                    project_id,
+                    scene_id,
+                )
+            if isinstance(image_result, dict) and image_result.get("url"):
+                prompt_parts = _build_scene_prompt_parts(scene, blueprint)
+                images.append(
+                    {
+                        "id": new_id(),
+                        "type": "scene",
+                        "scene_id": scene_id,
+                        "url": image_result.get("url"),
+                        "prompt": image_result.get("prompt") or scene_prompt,
+                        "prompt_parts": prompt_parts,
+                        "provider": image_result.get("provider"),
+                        "model": image_result.get("model"),
+                        "size": image_result.get("size"),
+                    }
+                )
+
+        _emit_step(project_id, "scene_images", "completed", "场景空间图已生成")
+        current_step = "scene_images"
+        _update_task(task_id, progress=STEP_PROGRESS["scene_images"])
+
+        _emit_step(project_id, "storyboard", "completed", "分镜剧本已完成")
+        current_step = "storyboard"
+        _update_task(task_id, progress=STEP_PROGRESS["storyboard"])
+
+        packages = package_repo.list_packages_for_project(db, project_id)
+        package_version = _next_package_version(packages)
+        package_name = llm_service.generate_package_name(
+            str(llm_input),
+            blueprint["summary"]["logline"],
+        )
+
+        first_scene = blueprint["scenes"][0] if blueprint.get("scenes") else {}
+        image_plan = {
+            "prompt": first_scene.get("prompt_hint") or blueprint["summary"]["synopsis"],
+            "style": None,
+            "aspect_ratio": "3:4",
+            "size": settings.seedream_default_size or "960x1280",
+            "seed": None,
+        }
+
+        package = package_repo.create_package(
+            db,
+            project_id=project_id,
+            package_name=package_name,
+            status="completed",
+            materials={
+                "metadata": {
+                    "summary": blueprint["summary"]["logline"],
+                    "keywords": blueprint["summary"]["keywords"],
+                    "blueprint_v1": blueprint,
+                    "image_plan": image_plan,
+                    "image_size": settings.seedream_default_size or "960x1280",
+                    "images": images,
+                    "video_plan": {"status": "pending", "items": []},
+                    "package_version": package_version,
+                    "package_name": package_name,
+                    "parent_package_id": None,
+                    "user_prompt": llm_input,
+                    "user_feedback": None,
+                    "generation_mode": mode,
+                },
+                "art_style": {
+                    "style_name": blueprint.get("art_style", {}).get("style_name", ""),
+                    "description": blueprint.get("art_style", {}).get("style_prompt", ""),
+                },
+                "characters": [],
+                "scenes": [],
+                "storyboards": [],
+            },
+        )
+
+        project_repo.update_project(
+            db,
+            project_id,
+            {
+                "last_material_package_id": package["id"],
+                "status": "generating",
+                "stage": "generating",
+                "progress": 5,
+            },
+        )
+        task = GENERATION_TASKS.get(task_id)
+        if task is not None:
+            task["material_package_id"] = package["id"]
+        _emit_step(project_id, "done", "completed", "素材包已生成")
+        current_step = "done"
+        _update_task(task_id, status="completed", progress=STEP_PROGRESS["done"])
+        emit_event(
+            "generation.completed",
+            {
+                "project_id": project_id,
+                "task_id": task_id,
+                "material_package_id": package["id"],
+                "progress": STEP_PROGRESS["done"],
+                "status": "completed",
+            },
+            trace_id=trace_id,
+        )
+    except Exception:
+        logger.exception("generation failed project_id=%s", project_id)
+        _update_task(task_id, status="failed", progress=0)
+        if not error_sent:
+            error_sent = True
+            publish_generation_event(
+                project_id,
+                {"type": "generation.error", "step": current_step, "message": "生成失败"},
+            )
+        emit_event(
+            "generation.completed",
+            {
+                "project_id": project_id,
+                "task_id": task_id,
+                "status": "failed",
+            },
+            trace_id=trace_id,
+        )
+    finally:
+        db.close()
+
+
+@router.get("/stream/{project_id}")
+async def stream_generation(project_id: str) -> StreamingResponse:
+    if not project_id.strip():
+        raise HTTPException(status_code=400, detail="project_id required")
+    queue, history = subscribe_generation_events(project_id)
+
+    def event_stream():
+        try:
+            for payload in history:
+                yield format_sse(payload)
+            while True:
+                try:
+                    payload = queue.get(timeout=15)
+                except Empty:
+                    yield ": ping\n\n"
+                    continue
+                yield format_sse(payload)
+                if payload.get("type") == "generation.error":
+                    break
+                if (
+                    payload.get("type") == "generation.step"
+                    and payload.get("step") == "done"
+                    and payload.get("status") == "completed"
+                ):
+                    break
+        finally:
+            unsubscribe_generation_events(project_id, queue)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.post("/start")
 async def start_generation(
     background_tasks: BackgroundTasks,
@@ -129,77 +583,19 @@ async def start_generation(
         llm_input = prompt.strip()
     else:
         llm_input = project.get("description") or project.get("name") or ""
-    started_at = time.perf_counter()
-    try:
-        llm_result = llm_service.generate(str(llm_input))
-    except Exception:
-        logger.exception("LLM generation failed for project_id=%s", project_id)
-        llm_result = {"summary": "Demo content", "storyline": "Demo content", "keywords": []}
-    duration_ms = int((time.perf_counter() - started_at) * 1000)
-    logger.info("LLM generation finished project_id=%s duration_ms=%s", project_id, duration_ms)
-
-    try:
-        if not isinstance(llm_result, dict):
-            logger.debug("LLM output not structured for project_id=%s; using fallback", project_id)
-        summary = llm_result.get("summary") if isinstance(llm_result, dict) else None
-        storyline = llm_result.get("storyline") if isinstance(llm_result, dict) else None
-        keywords = llm_result.get("keywords") if isinstance(llm_result, dict) else []
-        if not isinstance(summary, str) or not summary.strip():
-            logger.debug("LLM summary missing for project_id=%s; using fallback", project_id)
-            summary = "Demo content"
-        if not isinstance(storyline, str) or not storyline.strip():
-            logger.debug("LLM storyline missing for project_id=%s; using summary", project_id)
-            storyline = summary
-        if not isinstance(keywords, list):
-            logger.debug("LLM keywords invalid for project_id=%s; using empty list", project_id)
-            keywords = []
-        keywords = [str(item).strip() for item in keywords if str(item).strip()]
-        package = package_repo.create_package(
-            db,
-            project_id=project_id,
-            package_name="Package v1",
-            status="completed",
-            materials={
-                "storyline": {
-                    "title": "Mock Story",
-                    "content": storyline,
-                    "summary": summary,
-                },
-                "metadata": {
-                    "summary": summary,
-                    "storyline": storyline,
-                    "keywords": keywords,
-                    "image_plan": {"status": "pending", "items": []},
-                    "video_plan": {"status": "pending", "items": []},
-                },
-                "art_style": {"style_name": "Minimal", "description": "Clean visuals"},
-                "characters": [],
-                "scenes": [],
-                "storyboards": [],
-            },
-        )
-        project_repo.update_project(
-            db,
-            project_id,
-            {
-                "last_material_package_id": package["id"],
-                "status": "generating",
-                "stage": "generating",
-                "progress": 5,
-            },
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    except SQLAlchemyError:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Database error")
-
+    if not isinstance(llm_input, str) or not llm_input.strip():
+        raise HTTPException(status_code=400, detail="prompt required")
+    mode = payload.get("mode")
+    mode = mode.strip().lower() if isinstance(mode, str) else "general"
+    if mode not in {"general", "pro"}:
+        mode = "general"
+    documents = payload.get("documents")
+    documents = documents if isinstance(documents, list) else []
     task_id = new_id()
     trace_id = new_trace_id()
     task = {
         "id": task_id,
         "project_id": project_id,
-        "material_package_id": package["id"],
         "status": "pending",
         "progress": 0,
         "created_at": utc_now(),
@@ -212,12 +608,20 @@ async def start_generation(
         {
             "project_id": project_id,
             "task_id": task_id,
-            "material_package_id": package["id"],
+            "material_package_id": None,
         },
         trace_id=trace_id,
     )
-
-    background_tasks.add_task(_simulate_generation, task_id)
+    reset_generation_events(project_id)
+    background_tasks.add_task(
+        _run_generation_task,
+        project_id,
+        llm_input,
+        mode,
+        documents,
+        task_id,
+        trace_id,
+    )
     return ok(task)
 
 

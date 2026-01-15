@@ -42,6 +42,8 @@ provide('toasts', toastState);
 
 <style>
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&display=swap");
+@import "./styles/utilities.css";
+@import "./styles/layout.css";
 
 :root {
   --md-surface: #fffbfe;
@@ -56,6 +58,12 @@ provide('toasts', toastState);
   --md-tertiary: #7d5260;
   --md-outline: #79747e;
   --md-shadow: rgba(18, 18, 18, 0.12);
+  --layer-nav: 100;
+  --layer-side: 90;
+  --layer-popover: 200;
+  --layer-overlay: 800;
+  --layer-modal: 900;
+  --layer-toast: 1000;
 }
 /* Global Styles */
 *,
@@ -127,7 +135,7 @@ a {
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 9999;
+  z-index: var(--layer-toast);
   animation: slideUp 0.3s ease;
 }
 
@@ -171,6 +179,17 @@ a {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 </style>

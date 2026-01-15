@@ -1,0 +1,43 @@
+/* Shared utility classes used across pages */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-1 { gap: 4px; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+
+.text-xs { font-size: 12px; }
+.text-sm { font-size: 14px; }
+.text-lg { font-size: 18px; }
+.text-2xl { font-size: 24px; }
+.text-11 { font-size: 11px; }
+.text-right { text-align: right; }
+
+.font-semibold { font-weight: 600; }
+
+.text-slate-100 { color: var(--md-on-surface); }
+.text-slate-200 { color: var(--md-on-surface); }
+.text-slate-300 { color: var(--md-on-surface-variant); }
+.text-slate-400 { color: var(--md-on-surface-variant); }
+.text-slate-500 { color: var(--md-on-surface-variant); }
+
+.m-0 { margin: 0; }
+.mt-1 { margin-top: 4px; }
+.mt-2 { margin-top: 8px; }
+.mt-4 { margin-top: 16px; }
+.mt-8 { margin-top: 32px; }
+.mb-1 { margin-bottom: 4px; }
+.mb-2 { margin-bottom: 8px; }
+.mb-3 { margin-bottom: 12px; }
+.mb-12 { margin-bottom: 48px; }
+.mb-14 { margin-bottom: 56px; }
+.ml-2 { margin-left: 8px; }
+.mr-4 { margin-right: 16px; }
+
+.w-10 { width: 40px; }
+.w-full { width: 100%; }
+
+.leading-relaxed { line-height: 1.6; }
+.overflow-auto { overflow: auto; }
+.max-h-32 { max-height: 8rem; }

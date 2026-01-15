@@ -192,9 +192,4 @@ const truncateText = (text: string) => {
   font-size: 12px;
 }
 
-.text-xs { font-size: 12px; }
-.text-sm { font-size: 14px; }
-.text-slate-200 { color: var(--md-on-surface); }
-.text-slate-400 { color: var(--md-on-surface-variant); }
-.w-full { width: 100%; }
 </style>

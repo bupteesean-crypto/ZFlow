@@ -425,15 +425,4 @@ const handleBatchArchive = () => {
   font-size: 14px;
 }
 
-.text-2xl { font-size: 24px; }
-.font-semibold { font-weight: 600; }
-.text-xs { font-size: 12px; }
-.text-sm { font-size: 14px; }
-.text-slate-400 { color: var(--md-on-surface-variant); }
-.m-0 { margin: 0; }
-.mt-2 { margin-top: 8px; }
-.mb-1 { margin-bottom: 4px; }
-.flex { display: flex; }
-.items-center { align-items: center; }
-.gap-2 { gap: 8px; }
 </style>

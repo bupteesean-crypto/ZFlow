@@ -18,8 +18,8 @@
       <div :class="['entry-shell', { expanded: isExpanded, minimal: isMinimal }]">
         <div class="mode-toggle" :class="mode">
           <span class="mode-pill"></span>
-          <button type="button" @click="mode = 'general'">通用模式</button>
-          <button type="button" @click="mode = 'pro'">专业模式</button>
+          <button type="button" @click="mode = 'general'">通用</button>
+          <button type="button" @click="mode = 'pro'">专业</button>
         </div>
 
         <div class="entry-line">
@@ -54,10 +54,12 @@
             </button>
             <button title="选择模型" @click="showModelSelector = !showModelSelector">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" y1="19" x2="12" y2="23" />
-                <line x1="8" y1="23" x2="16" y2="23" />
+                <line x1="4" y1="6" x2="20" y2="6" />
+                <line x1="4" y1="12" x2="20" y2="12" />
+                <line x1="4" y1="18" x2="20" y2="18" />
+                <circle cx="9" cy="6" r="2" />
+                <circle cx="15" cy="12" r="2" />
+                <circle cx="11" cy="18" r="2" />
               </svg>
             </button>
             <span class="action-label">高级选项</span>
@@ -138,7 +140,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast';
 import { createProject } from '@/api/projects';
-import { fetchGenerationProgress, startGeneration } from '@/api/generation';
+import { startGeneration } from '@/api/generation';
 
 interface TodoItem {
   title: string;
@@ -268,9 +270,6 @@ const handleSubmit = async () => {
   }
 
   generating.value = true;
-  todoItems.value.forEach(item => {
-    item.status = 'pending';
-  });
 
   try {
     const projectName = prompt.value.slice(0, 20);
@@ -279,35 +278,12 @@ const handleSubmit = async () => {
     sessionStorage.setItem('currentProjectName', project.name);
     sessionStorage.setItem('currentPrompt', prompt.value);
     sessionStorage.setItem('currentMode', mode.value);
+    sessionStorage.setItem('streamProjectId', project.id);
+    sessionStorage.setItem('streamType', 'start');
+    sessionStorage.setItem('streamPrompt', prompt.value);
+    sessionStorage.setItem('streamStartedAt', String(Date.now()));
 
-    const task = await startGeneration(project.id, prompt.value);
-    let completed = false;
-    const updateTodo = (progress: number) => {
-      todoItems.value.forEach(item => {
-        item.status = 'pending';
-      });
-      if (progress >= 0) todoItems.value[0].status = 'loading';
-      if (progress >= 30) todoItems.value[0].status = 'done';
-      if (progress >= 30) todoItems.value[1].status = 'loading';
-      if (progress >= 60) todoItems.value[1].status = 'done';
-      if (progress >= 60) todoItems.value[2].status = 'loading';
-      if (progress >= 80) todoItems.value[2].status = 'done';
-      if (progress >= 80) todoItems.value[3].status = 'loading';
-      if (progress >= 100) todoItems.value[3].status = 'done';
-      if (progress >= 100) todoItems.value[4].status = 'done';
-    };
-
-    while (!completed) {
-      const progressData = await fetchGenerationProgress(project.id);
-      const latest = progressData.list.find(item => item.id === task.id) || task;
-      updateTodo(latest.progress || 0);
-      if (latest.status === 'completed') {
-        completed = true;
-      } else {
-        await new Promise(resolve => setTimeout(resolve, 800));
-      }
-    }
-
+    await startGeneration(project.id, prompt.value, mode.value);
     generating.value = false;
     router.push('/materials');
   } catch (err) {
@@ -337,14 +313,25 @@ const getTodoIcon = (status: TodoItem['status']) => {
   }
 };
 
-// Scroll handler for sticky effect
+// Scroll handler for sticky effect (rAF throttled)
+let isTicking = false;
+const updateShrinkState = () => {
+  const next = window.scrollY > 200;
+  if (next !== isShrunk.value) {
+    isShrunk.value = next;
+  }
+  isTicking = false;
+};
+
 const handleScroll = () => {
-  const scrollTop = window.scrollY;
-  isShrunk.value = scrollTop > 200;
+  if (isTicking) return;
+  isTicking = true;
+  window.requestAnimationFrame(updateShrinkState);
 };
 
 onMounted(() => {
-  window.addEventListener('scroll', handleScroll);
+  updateShrinkState();
+  window.addEventListener('scroll', handleScroll, { passive: true });
 });
 
 onUnmounted(() => {
@@ -599,7 +586,7 @@ onUnmounted(() => {
 
 /* Mode Toggle */
 .mode-toggle {
-  width: 120px;
+  width: 96px;
   height: 34px;
   border-radius: 9999px;
   border: 1px solid rgba(121, 116, 126, 0.25);
@@ -612,6 +599,7 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--md-on-surface-variant);
   margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 .mode-pill {
@@ -641,6 +629,7 @@ onUnmounted(() => {
   z-index: 2;
   cursor: pointer;
   padding: 0;
+  white-space: nowrap;
 }
 
 /* Model Selector */
@@ -845,7 +834,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: var(--layer-overlay);
   backdrop-filter: blur(8px);
 }
 

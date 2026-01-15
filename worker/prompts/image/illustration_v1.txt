@@ -1,0 +1,23 @@
+Create a clean, consistent 3:4 portrait illustration suitable for a short video storyboard frame.
+
+Scene summary: {{scene_summary}}
+Mood: {{mood}}
+Keywords: {{keywords}}
+
+Style:
+- modern, clear illustration
+- cohesive color palette
+- soft contrast, balanced lighting
+- no photorealism, no heavy textures
+
+Composition:
+- single focal subject
+- readable silhouette
+- mid-shot, cinematic framing
+- uncluttered background
+
+Constraints:
+- no text, no captions, no logos, no watermark
+- avoid low-quality artifacts or distortion
+- avoid extra limbs or malformed anatomy
+- avoid busy patterns or chaotic layouts

@@ -24,6 +24,7 @@ def create_package(
     package_name: str,
     status: str,
     materials: dict,
+    parent_id: str | None = None,
 ) -> dict:
     project = db.execute(select(Project).where(Project.id == project_id)).scalar_one_or_none()
     if not project:
@@ -36,7 +37,7 @@ def create_package(
     package = MaterialPackage(
         id=new_id(),
         project_id=project_id,
-        parent_id=None,
+        parent_id=parent_id,
         package_name=package_name,
         status=status,
         is_active=True,

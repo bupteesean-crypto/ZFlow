@@ -1,0 +1,964 @@
+{
+  "package_name": "小猪的下班幻想",
+  "summary": "一个上班族（以“小猪”形象或心理活动表现）在工位上身在曹营心在汉，身体在机械地处理工作，而精神早已飞到下班后的各种“猪生巅峰”幻想中。视频通过快速剪辑和夸张对比，展现上班的枯燥与下班的无限美好，最终在下班铃声响起时，主角瞬间“复活”，冲出办公室，引发打工人的强烈共鸣。",
+  "materials": {
+    "metadata": {
+      "summary": "一个上班族（以“小猪”形象或心理活动表现）在工位上身在曹营心在汉，身体在机械地处理工作，而精神早已飞到下班后的各种“猪生巅峰”幻想中。视频通过快速剪辑和夸张对比，展现上班的枯燥与下班的无限美好，最终在下班铃声响起时，主角瞬间“复活”，冲出办公室，引发打工人的强烈共鸣。",
+      "keywords": [
+        "上班",
+        "下班",
+        "幻想",
+        "打工人",
+        "卡通"
+      ],
+      "blueprint_v1": {
+        "version": "v1",
+        "summary": {
+          "logline": "一个上班族以“小猪”形象度过枯燥工作日，在下班铃声响起时瞬间复活，冲向自由。",
+          "synopsis": "一个上班族（以“小猪”形象或心理活动表现）在工位上身在曹营心在汉，身体在机械地处理工作，而精神早已飞到下班后的各种“猪生巅峰”幻想中。视频通过快速剪辑和夸张对比，展现上班的枯燥与下班的无限美好，最终在下班铃声响起时，主角瞬间“复活”，冲出办公室，引发打工人的强烈共鸣。",
+          "keywords": [
+            "上班",
+            "下班",
+            "幻想",
+            "打工人",
+            "卡通"
+          ]
+        },
+        "art_style": {
+          "style_name": "卡通画风",
+          "style_prompt": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+          "palette": [],
+          "reference": null
+        },
+        "subjects": [
+          {
+            "id": "char_1",
+            "name": "小猪-上班状态",
+            "role": "上班族主角",
+            "description": "疲惫、眼神呆滞的上班族，身在工位心已飞，代表着上班的枯燥与压抑。",
+            "visual_traits": [
+              "男性",
+              "青年",
+              "亚洲人",
+              "黑色短发",
+              "冷灰色衬衫",
+              "深蓝色领带",
+              "面色苍白",
+              "眼神空洞",
+              "姿态僵硬"
+            ],
+            "views": [
+              "front"
+            ],
+            "view_prompts": {},
+            "prompt_hint": "卡通画风。全景，正面拍摄，男性，青年，亚洲人。黑色短发，身穿冷灰色衬衫和深蓝色领带，面色苍白，眼神空洞呆滞，姿态僵硬地站立。整体色调偏冷，低饱和度，线条规整。姿态：站立。"
+          },
+          {
+            "id": "char_2",
+            "name": "小猪-幻想灵魂",
+            "role": "幻想灵魂",
+            "description": "充满活力、渴望自由的卡通猪形象，代表着主角对下班后“猪生巅峰”的无限向往。",
+            "visual_traits": [
+              "卡通猪",
+              "粉色皮肤",
+              "圆润可爱",
+              "大眼睛",
+              "嘴角上扬",
+              "表情丰富",
+              "充满活力"
+            ],
+            "views": [
+              "front"
+            ],
+            "view_prompts": {},
+            "prompt_hint": "卡通画风。全景，正面拍摄，卡通猪，粉色皮肤，圆润可爱，大眼睛，嘴角上扬，表情丰富，充满活力，眼神充满渴望。整体色彩鲜艳，饱和度高，暖色调，线条流畅。姿态：站立。"
+          }
+        ],
+        "scenes": [
+          {
+            "id": "scene_1",
+            "name": "办公室工位",
+            "description": "上班族日常工作的空间，堆满文件和电脑屏幕，氛围沉闷。",
+            "mood": "沉闷",
+            "purpose": "对比现实与幻想",
+            "prompt_hint": "卡通画风。一个无人使用的办公室工位，桌面堆放着整齐的文件和一台关闭的电脑显示器。整体色调偏冷，低饱和度，光线平淡均匀，线条规整，营造出一种沉闷、枯燥的办公环境。"
+          },
+          {
+            "id": "scene_2",
+            "name": "零食堆积的房间",
+            "description": "幻想中被薯片、零食包围的房间，充满欢乐和满足。",
+            "mood": "欢乐",
+            "purpose": "展现幻想自由",
+            "prompt_hint": "卡通画风。一个房间内部，地面和周围堆满了各种色彩鲜艳的薯片袋和零食包装。房间色彩明亮，饱和度高，光线柔和而温暖，线条流畅且略带夸张，充满轻松愉悦的氛围。"
+          },
+          {
+            "id": "scene_3",
+            "name": "泡面温泉",
+            "description": "幻想中被巨大泡面碗和温泉水包围的场景，极致的舒适和享受。",
+            "mood": "舒适",
+            "purpose": "夸张幻想享受",
+            "prompt_hint": "卡通画风。一个巨大的、冒着热气的泡面碗温泉，里面漂浮着Q弹的拉面和各种配料（如鱼板、鸡蛋）。周围环境色彩鲜艳，饱和度高，光线温暖柔和，线条流畅，充满想象力和舒适感。"
+          },
+          {
+            "id": "scene_4",
+            "name": "奢华零食卧室",
+            "description": "幻想中被各种零食“伺候”的卧室，如同国王般的享受。",
+            "mood": "奢华",
+            "purpose": "强化幻想高潮",
+            "prompt_hint": "卡通画风。一间装饰豪华、舒适的卧室，大床上铺着柔软的床品，周围散落着各式各样诱人的零食和饮料。房间色彩鲜艳，饱和度高，光线温暖而富有层次感，线条流畅，营造出一种极致享受和放松的奢华感。"
+          },
+          {
+            "id": "scene_5",
+            "name": "办公室走廊",
+            "description": "连接各个工位和出口的走廊，下班前匆忙通过的路径。",
+            "mood": "压抑",
+            "purpose": "冲刺过渡",
+            "prompt_hint": "卡通画风。一条空旷的办公室走廊，两侧是紧闭的办公室门和规整的隔断。整体色调偏冷，低饱和度，光线平淡，线条笔直而规整，呈现出一种安静而略显压抑的办公楼内部环境。"
+          },
+          {
+            "id": "scene_6",
+            "name": "大楼出口/街景",
+            "description": "冲出办公室后，迎接自由和下班生活的户外场景。",
+            "mood": "自由",
+            "purpose": "收束情绪",
+            "prompt_hint": "卡通画风。一座现代办公大楼的玻璃门出口，门外是充满活力的城市街景。阳光明媚，色彩鲜艳，饱和度高，光线明亮，线条流畅，展现出一种自由、充满生机的户外氛围。"
+          }
+        ],
+        "storyboard": [
+          {
+            "id": "shot_1",
+            "shot_number": 1,
+            "scene_id": "scene_1",
+            "description": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。",
+            "duration_sec": 3,
+            "camera": "构图：中景，平视视角，正面机位；运镜：固定镜头。",
+            "prompt_hint": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。",
+            "scene_block": 1
+          },
+          {
+            "id": "shot_2",
+            "shot_number": 2,
+            "scene_id": "scene_1",
+            "description": "小猪-上班状态坐在工位上，面部特写，眼神呆滞，面色苍白，表情疲惫。",
+            "duration_sec": 3,
+            "camera": "构图：面部特写，平视视角，正面机位；运镜：镜头缓慢推近，聚焦空洞眼神。",
+            "prompt_hint": "小猪-上班状态面部特写，眼神呆滞，面色苍白，表情疲惫。",
+            "scene_block": 1
+          },
+          {
+            "id": "shot_3",
+            "shot_number": 3,
+            "scene_id": "scene_1",
+            "description": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。一个半透明的小猪-幻想灵魂从他头顶缓缓飘出，身体朝向窗外，眼神充满渴望。",
+            "duration_sec": 3,
+            "camera": "构图：中景，平视视角，背面机位；运镜：镜头缓慢拉远，展现主体与灵魂。",
+            "prompt_hint": "小猪-上班状态与飘出的幻想灵魂同框，灵魂朝向窗外。",
+            "scene_block": 1
+          },
+          {
+            "id": "shot_4",
+            "shot_number": 4,
+            "scene_id": "scene_1",
+            "description": "小猪-幻想灵魂漂浮在半空中，身体朝向窗外，圆润可爱的脸上充满期待，眼神渴望地望向远方。",
+            "duration_sec": 3,
+            "camera": "构图：近景，平视视角，侧面机位；运镜：镜头缓慢摇摄，跟随视线。",
+            "prompt_hint": "小猪-幻想灵魂漂浮在半空，朝向窗外，神情期待。",
+            "scene_block": 1
+          },
+          {
+            "id": "shot_5",
+            "shot_number": 5,
+            "scene_id": "scene_2",
+            "description": "小猪-幻想灵魂躺在零食堆中，身体陷在薯片袋里，双手抓着一包薯片，脸上洋溢着满足的笑容。周围堆满了色彩鲜艳的零食。",
+            "duration_sec": 3,
+            "camera": "构图：中景，平视视角，正面机位；运镜：固定镜头。",
+            "prompt_hint": "幻想灵魂躺在零食堆中，笑容满足。",
+            "scene_block": 2
+          },
+          {
+            "id": "shot_6",
+            "shot_number": 6,
+            "scene_id": "scene_1",
+            "description": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。他机械地敲击着键盘。",
+            "duration_sec": 3,
+            "camera": "构图：近景，平视视角，正面机位；运镜：快速切换镜头。",
+            "prompt_hint": "小猪-上班状态机械敲击键盘。",
+            "scene_block": 3
+          },
+          {
+            "id": "shot_7",
+            "shot_number": 7,
+            "scene_id": "scene_3",
+            "description": "小猪-幻想灵魂全身浸泡在巨大的泡面温泉里，头部露出水面，双手搭在碗边，脸上露出极致舒适的表情。热气腾腾的泡面和配料清晰可见。",
+            "duration_sec": 3,
+            "camera": "构图：中景，平视视角，正面机位；运镜：镜头缓慢环绕。",
+            "prompt_hint": "幻想灵魂浸泡在泡面温泉里，表情舒适。",
+            "scene_block": 4
+          },
+          {
+            "id": "shot_8",
+            "shot_number": 8,
+            "scene_id": "scene_1",
+            "description": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。他打了个哈欠，显得非常疲惫。",
+            "duration_sec": 3,
+            "camera": "构图：近景，平视视角，侧面机位；运镜：快速切换镜头。",
+            "prompt_hint": "小猪-上班状态打哈欠，疲惫。",
+            "scene_block": 5
+          },
+          {
+            "id": "shot_9",
+            "shot_number": 9,
+            "scene_id": "scene_4",
+            "description": "小猪-幻想灵魂躺在一张豪华大床上，身体被柔软的床品包裹，周围散落着各种零食饮料，它像国王般被零食包围，享受着被“伺候”的感觉。",
+            "duration_sec": 3,
+            "camera": "构图：全景，俯视视角，正面机位；运镜：镜头缓慢推近。",
+            "prompt_hint": "幻想灵魂躺在豪华零食卧室，被零食环绕。",
+            "scene_block": 6
+          },
+          {
+            "id": "shot_10",
+            "shot_number": 10,
+            "scene_id": "scene_1",
+            "description": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。他伸了个懒腰，显得非常疲惫。",
+            "duration_sec": 3,
+            "camera": "构图：中景，平视视角，正面机位；运镜：固定镜头。",
+            "prompt_hint": "小猪-上班状态伸懒腰。",
+            "scene_block": 7
+          },
+          {
+            "id": "shot_11",
+            "shot_number": 11,
+            "scene_id": "scene_1",
+            "description": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。突然，他猛地抬头，眼神瞬间恢复清明，脸上露出狂喜的表情。",
+            "duration_sec": 3,
+            "camera": "构图：近景，平视视角，正面机位；运镜：镜头快速推近。",
+            "prompt_hint": "小猪-上班状态突然抬头，狂喜。",
+            "scene_block": 7
+          },
+          {
+            "id": "shot_12",
+            "shot_number": 12,
+            "scene_id": "scene_1",
+            "description": "小猪-上班状态猛地从椅子上弹起，身体前倾，双手猛地推开键盘，脸上露出狂喜的表情，准备冲出工位。",
+            "duration_sec": 3,
+            "camera": "构图：中景，平视视角，正面机位；运镜：快速推拉镜头。",
+            "prompt_hint": "小猪-上班状态从椅子弹起，准备冲出工位。",
+            "scene_block": 7
+          },
+          {
+            "id": "shot_13",
+            "shot_number": 13,
+            "scene_id": "scene_5",
+            "description": "小猪-上班状态在办公室走廊上飞奔，身体前倾，双臂摆动，脸上充满解脱和兴奋。走廊两侧的办公室门快速从画面中划过。",
+            "duration_sec": 3,
+            "camera": "构图：中景，平视视角，跟随机位；运镜：镜头快速平移。",
+            "prompt_hint": "小猪-上班状态在走廊飞奔，解脱兴奋。",
+            "scene_block": 8
+          },
+          {
+            "id": "shot_14",
+            "shot_number": 14,
+            "scene_id": "scene_6",
+            "description": "小猪-上班状态猛地冲出大楼的玻璃门，身体前倾，双臂张开，仿佛拥抱自由。阳光洒在他身上。",
+            "duration_sec": 3,
+            "camera": "构图：全景，平视视角，正面机位；运镜：镜头快速拉远。",
+            "prompt_hint": "小猪-上班状态冲出大楼，拥抱自由。",
+            "scene_block": 9
+          },
+          {
+            "id": "shot_15",
+            "shot_number": 15,
+            "scene_id": "scene_6",
+            "description": "小猪-上班状态站在大楼出口外，身体挺直，仰头看向天空，脸上洋溢着灿烂的笑容，仿佛所有的疲惫一扫而空。身后是充满活力的城市街景。",
+            "duration_sec": 3,
+            "camera": "构图：中景，仰视视角，背面机位；运镜：镜头缓慢摇摄，从脚部摇到头部，再摇向天空。",
+            "prompt_hint": "小猪-上班状态站在出口外仰望天空，笑容灿烂。",
+            "scene_block": 9
+          }
+        ],
+        "generation": {
+          "aspect_ratio": "3:4",
+          "seed": null,
+          "created_at": "2025-01-01T00:00:00Z",
+          "source_prompt": "小猪的下班幻想"
+        }
+      },
+      "image_plan": {
+        "prompt": "卡通画风。一个无人使用的办公室工位，桌面堆放着整齐的文件和一台关闭的电脑显示器。整体色调偏冷，低饱和度，光线平淡均匀，线条规整，营造出一种沉闷、枯燥的办公环境。",
+        "style": null,
+        "aspect_ratio": "3:4",
+        "seed": null
+      },
+      "images": [
+        {
+          "id": "demo_img_1",
+          "type": "character_view",
+          "subject_id": "char_1",
+          "subject_name": "小猪-上班状态",
+          "view": "front",
+          "url": "http://localhost:8000/static/demo_material/pig_work.png",
+          "prompt": "卡通画风。全景，正面拍摄，男性，青年，亚洲人。黑色短发，身穿冷灰色衬衫和深蓝色领带，面色苍白，眼神空洞呆滞，姿态僵硬地站立。整体色调偏冷，低饱和度，线条规整。姿态：站立。",
+          "prompt_parts": {
+            "content": "小猪-上班状态形象设定",
+            "style": "卡通画风，冷色调",
+            "constraints": "无文字、无水印"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_img_2",
+          "type": "character_view",
+          "subject_id": "char_2",
+          "subject_name": "小猪-幻想灵魂",
+          "view": "front",
+          "url": "http://localhost:8000/static/demo_material/pig_outwork.png",
+          "prompt": "卡通画风。全景，正面拍摄，卡通猪，粉色皮肤，圆润可爱，大眼睛，嘴角上扬，表情丰富，充满活力，眼神充满渴望。整体色彩鲜艳，饱和度高，暖色调，线条流畅。姿态：站立。",
+          "prompt_parts": {
+            "content": "小猪-幻想灵魂形象设定",
+            "style": "卡通画风，暖色调",
+            "constraints": "无文字、无水印"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_img_3",
+          "type": "scene",
+          "scene_id": "scene_1",
+          "scene_name": "办公室工位",
+          "url": "http://localhost:8000/static/demo_material/scene1.png",
+          "prompt": "卡通画风。一个无人使用的办公室工位，桌面堆放着整齐的文件和一台关闭的电脑显示器。整体色调偏冷，低饱和度，光线平淡均匀，线条规整，营造出一种沉闷、枯燥的办公环境。",
+          "prompt_parts": {
+            "content": "办公室工位场景",
+            "style": "卡通画风，冷色调",
+            "constraints": "无人物、无文字、无水印"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_img_4",
+          "type": "scene",
+          "scene_id": "scene_2",
+          "scene_name": "零食堆积的房间",
+          "url": "http://localhost:8000/static/demo_material/scene2.png",
+          "prompt": "卡通画风。一个房间内部，地面和周围堆满了各种色彩鲜艳的薯片袋和零食包装。房间色彩明亮，饱和度高，光线柔和而温暖，线条流畅且略带夸张，充满轻松愉悦的氛围。",
+          "prompt_parts": {
+            "content": "零食堆积的房间场景",
+            "style": "卡通画风，暖色调",
+            "constraints": "无人物、无文字、无水印"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_img_5",
+          "type": "scene",
+          "scene_id": "scene_3",
+          "scene_name": "泡面温泉",
+          "url": "http://localhost:8000/static/demo_material/scene3.png",
+          "prompt": "卡通画风。一个巨大的、冒着热气的泡面碗温泉，里面漂浮着Q弹的拉面和各种配料（如鱼板、鸡蛋）。周围环境色彩鲜艳，饱和度高，光线温暖柔和，线条流畅，充满想象力和舒适感。",
+          "prompt_parts": {
+            "content": "泡面温泉场景",
+            "style": "卡通画风，暖色调",
+            "constraints": "无人物、无文字、无水印"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_img_6",
+          "type": "scene",
+          "scene_id": "scene_4",
+          "scene_name": "奢华零食卧室",
+          "url": "http://localhost:8000/static/demo_material/scene4.png",
+          "prompt": "卡通画风。一间装饰豪华、舒适的卧室，大床上铺着柔软的床品，周围散落着各式各样诱人的零食和饮料。房间色彩鲜艳，饱和度高，光线温暖而富有层次感，线条流畅，营造出一种极致享受和放松的奢华感。",
+          "prompt_parts": {
+            "content": "奢华零食卧室场景",
+            "style": "卡通画风，暖色调",
+            "constraints": "无人物、无文字、无水印"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_img_7",
+          "type": "scene",
+          "scene_id": "scene_5",
+          "scene_name": "办公室走廊",
+          "url": "http://localhost:8000/static/demo_material/scene5.png",
+          "prompt": "卡通画风。一条空旷的办公室走廊，两侧是紧闭的办公室门和规整的隔断。整体色调偏冷，低饱和度，光线平淡，线条笔直而规整，呈现出一种安静而略显压抑的办公楼内部环境。",
+          "prompt_parts": {
+            "content": "办公室走廊场景",
+            "style": "卡通画风，冷色调",
+            "constraints": "无人物、无文字、无水印"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_img_8",
+          "type": "scene",
+          "scene_id": "scene_6",
+          "scene_name": "大楼出口/街景",
+          "url": "http://localhost:8000/static/demo_material/scene6.png",
+          "prompt": "卡通画风。一座现代办公大楼的玻璃门出口，门外是充满活力的城市街景。阳光明媚，色彩鲜艳，饱和度高，光线明亮，线条流畅，展现出一种自由、充满生机的户外氛围。",
+          "prompt_parts": {
+            "content": "大楼出口/街景场景",
+            "style": "卡通画风，明亮色调",
+            "constraints": "无人物、无文字、无水印"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_1",
+          "type": "storyboard",
+          "shot_id": "shot_1",
+          "scene_id": "scene_1",
+          "scene_name": "办公室工位",
+          "url": "http://localhost:8000/static/demo_material/scene1.png",
+          "prompt": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。",
+          "prompt_parts": {
+            "content": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_2",
+          "type": "storyboard",
+          "shot_id": "shot_2",
+          "scene_id": "scene_1",
+          "scene_name": "办公室工位",
+          "url": "http://localhost:8000/static/demo_material/scene1.png",
+          "prompt": "小猪-上班状态面部特写，眼神呆滞，面色苍白，表情疲惫。",
+          "prompt_parts": {
+            "content": "小猪-上班状态坐在工位上，面部特写，眼神呆滞，面色苍白，表情疲惫。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_3",
+          "type": "storyboard",
+          "shot_id": "shot_3",
+          "scene_id": "scene_1",
+          "scene_name": "办公室工位",
+          "url": "http://localhost:8000/static/demo_material/scene1.png",
+          "prompt": "小猪-上班状态与飘出的幻想灵魂同框，灵魂朝向窗外。",
+          "prompt_parts": {
+            "content": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。一个半透明的小猪-幻想灵魂从他头顶缓缓飘出，身体朝向窗外，眼神充满渴望。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_4",
+          "type": "storyboard",
+          "shot_id": "shot_4",
+          "scene_id": "scene_1",
+          "scene_name": "办公室工位",
+          "url": "http://localhost:8000/static/demo_material/scene1.png",
+          "prompt": "小猪-幻想灵魂漂浮在半空，朝向窗外，神情期待。",
+          "prompt_parts": {
+            "content": "小猪-幻想灵魂漂浮在半空中，身体朝向窗外，圆润可爱的脸上充满期待，眼神渴望地望向远方。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_5",
+          "type": "storyboard",
+          "shot_id": "shot_5",
+          "scene_id": "scene_2",
+          "scene_name": "零食堆积的房间",
+          "url": "http://localhost:8000/static/demo_material/scene2.png",
+          "prompt": "幻想灵魂躺在零食堆中，笑容满足。",
+          "prompt_parts": {
+            "content": "小猪-幻想灵魂躺在零食堆中，身体陷在薯片袋里，双手抓着一包薯片，脸上洋溢着满足的笑容。周围堆满了色彩鲜艳的零食。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_6",
+          "type": "storyboard",
+          "shot_id": "shot_6",
+          "scene_id": "scene_1",
+          "scene_name": "办公室工位",
+          "url": "http://localhost:8000/static/demo_material/scene1.png",
+          "prompt": "小猪-上班状态机械敲击键盘。",
+          "prompt_parts": {
+            "content": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。他机械地敲击着键盘。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_7",
+          "type": "storyboard",
+          "shot_id": "shot_7",
+          "scene_id": "scene_3",
+          "scene_name": "泡面温泉",
+          "url": "http://localhost:8000/static/demo_material/scene3.png",
+          "prompt": "幻想灵魂浸泡在泡面温泉里，表情舒适。",
+          "prompt_parts": {
+            "content": "小猪-幻想灵魂全身浸泡在巨大的泡面温泉里，头部露出水面，双手搭在碗边，脸上露出极致舒适的表情。热气腾腾的泡面和配料清晰可见。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_8",
+          "type": "storyboard",
+          "shot_id": "shot_8",
+          "scene_id": "scene_1",
+          "scene_name": "办公室工位",
+          "url": "http://localhost:8000/static/demo_material/scene1.png",
+          "prompt": "小猪-上班状态打哈欠，疲惫。",
+          "prompt_parts": {
+            "content": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。他打了个哈欠，显得非常疲惫。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_9",
+          "type": "storyboard",
+          "shot_id": "shot_9",
+          "scene_id": "scene_4",
+          "scene_name": "奢华零食卧室",
+          "url": "http://localhost:8000/static/demo_material/scene4.png",
+          "prompt": "幻想灵魂躺在豪华零食卧室，被零食环绕。",
+          "prompt_parts": {
+            "content": "小猪-幻想灵魂躺在一张豪华大床上，身体被柔软的床品包裹，周围散落着各种零食饮料，它像国王般被零食包围，享受着被“伺候”的感觉。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_10",
+          "type": "storyboard",
+          "shot_id": "shot_10",
+          "scene_id": "scene_1",
+          "scene_name": "办公室工位",
+          "url": "http://localhost:8000/static/demo_material/scene1.png",
+          "prompt": "小猪-上班状态伸懒腰。",
+          "prompt_parts": {
+            "content": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。他伸了个懒腰，显得非常疲惫。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_11",
+          "type": "storyboard",
+          "shot_id": "shot_11",
+          "scene_id": "scene_1",
+          "scene_name": "办公室工位",
+          "url": "http://localhost:8000/static/demo_material/scene1.png",
+          "prompt": "小猪-上班状态突然抬头，狂喜。",
+          "prompt_parts": {
+            "content": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。突然，他猛地抬头，眼神瞬间恢复清明，脸上露出狂喜的表情。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_12",
+          "type": "storyboard",
+          "shot_id": "shot_12",
+          "scene_id": "scene_1",
+          "scene_name": "办公室工位",
+          "url": "http://localhost:8000/static/demo_material/scene1.png",
+          "prompt": "小猪-上班状态从椅子弹起，准备冲出工位。",
+          "prompt_parts": {
+            "content": "小猪-上班状态猛地从椅子上弹起，身体前倾，双手猛地推开键盘，脸上露出狂喜的表情，准备冲出工位。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_13",
+          "type": "storyboard",
+          "shot_id": "shot_13",
+          "scene_id": "scene_5",
+          "scene_name": "办公室走廊",
+          "url": "http://localhost:8000/static/demo_material/scene5.png",
+          "prompt": "小猪-上班状态在走廊飞奔，解脱兴奋。",
+          "prompt_parts": {
+            "content": "小猪-上班状态在办公室走廊上飞奔，身体前倾，双臂摆动，脸上充满解脱和兴奋。走廊两侧的办公室门快速从画面中划过。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_14",
+          "type": "storyboard",
+          "shot_id": "shot_14",
+          "scene_id": "scene_6",
+          "scene_name": "大楼出口/街景",
+          "url": "http://localhost:8000/static/demo_material/scene6.png",
+          "prompt": "小猪-上班状态冲出大楼，拥抱自由。",
+          "prompt_parts": {
+            "content": "小猪-上班状态猛地冲出大楼的玻璃门，身体前倾，双臂张开，仿佛拥抱自由。阳光洒在他身上。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        },
+        {
+          "id": "demo_story_shot_15",
+          "type": "storyboard",
+          "shot_id": "shot_15",
+          "scene_id": "scene_6",
+          "scene_name": "大楼出口/街景",
+          "url": "http://localhost:8000/static/demo_material/scene6.png",
+          "prompt": "小猪-上班状态站在出口外仰望天空，笑容灿烂。",
+          "prompt_parts": {
+            "content": "小猪-上班状态站在大楼出口外，身体挺直，仰头看向天空，脸上洋溢着灿烂的笑容，仿佛所有的疲惫一扫而空。身后是充满活力的城市街景。",
+            "style": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。",
+            "constraints": "no text, no watermark"
+          },
+          "prompt_source": "demo_seed",
+          "provider": "demo",
+          "model": "local",
+          "size": "1024x1024",
+          "is_active": true
+        }
+      ],
+      "video_plan": {
+        "status": "pending",
+        "items": []
+      },
+      "package_version": 1,
+      "package_name": "小猪的下班幻想",
+      "parent_package_id": null,
+      "user_prompt": "小猪的下班幻想",
+      "user_feedback": null,
+      "generation_mode": "general",
+      "text_candidates_v1": {
+        "version": "v1",
+        "art_style": {
+          "active_id": null,
+          "candidates": []
+        },
+        "storyboard": {}
+      }
+    },
+    "art_style": {
+      "style_name": "卡通画风",
+      "description": "整体采用对比鲜明的卡通画风，以强化现实与幻想的反差。上班场景的色调偏向冷色调、低饱和度，光线平淡，线条规整，营造出沉闷、枯燥的办公室氛围。幻想场景则色彩鲜艳、饱和度高，充满暖色调和柔和的光线，线条流畅、夸张，动画效果生动活泼，营造轻松、愉悦、充满想象力的“猪生巅峰”世界。“小猪”形象在上班时可表现为略带疲惫、眼神呆滞的卡通化形象，或是一个戴着猪头面具的真人，其“灵魂出窍”的卡通猪形象则更加圆润可爱，表情丰富，充满活力。通过快速剪辑和强烈的色彩、构图对比，突出上班的压抑与下班幻想的自由奔放。"
+    },
+    "characters": [
+      {
+        "id": "char_1",
+        "name": "小猪-上班状态",
+        "role": "上班族主角",
+        "description": "疲惫、眼神呆滞的上班族，身在工位心已飞，代表着上班的枯燥与压抑。",
+        "visual_traits": [
+          "男性",
+          "青年",
+          "亚洲人",
+          "黑色短发",
+          "冷灰色衬衫",
+          "深蓝色领带",
+          "面色苍白",
+          "眼神空洞",
+          "姿态僵硬"
+        ]
+      },
+      {
+        "id": "char_2",
+        "name": "小猪-幻想灵魂",
+        "role": "幻想灵魂",
+        "description": "充满活力、渴望自由的卡通猪形象，代表着主角对下班后“猪生巅峰”的无限向往。",
+        "visual_traits": [
+          "卡通猪",
+          "粉色皮肤",
+          "圆润可爱",
+          "大眼睛",
+          "嘴角上扬",
+          "表情丰富",
+          "充满活力"
+        ]
+      }
+    ],
+    "scenes": [
+      {
+        "id": "scene_1",
+        "name": "办公室工位",
+        "description": "上班族日常工作的空间，堆满文件和电脑屏幕，氛围沉闷。",
+        "mood": "沉闷",
+        "prompt": "卡通画风。一个无人使用的办公室工位，桌面堆放着整齐的文件和一台关闭的电脑显示器。整体色调偏冷，低饱和度，光线平淡均匀，线条规整，营造出一种沉闷、枯燥的办公环境。"
+      },
+      {
+        "id": "scene_2",
+        "name": "零食堆积的房间",
+        "description": "幻想中被薯片、零食包围的房间，充满欢乐和满足。",
+        "mood": "欢乐",
+        "prompt": "卡通画风。一个房间内部，地面和周围堆满了各种色彩鲜艳的薯片袋和零食包装。房间色彩明亮，饱和度高，光线柔和而温暖，线条流畅且略带夸张，充满轻松愉悦的氛围。"
+      },
+      {
+        "id": "scene_3",
+        "name": "泡面温泉",
+        "description": "幻想中被巨大泡面碗和温泉水包围的场景，极致的舒适和享受。",
+        "mood": "舒适",
+        "prompt": "卡通画风。一个巨大的、冒着热气的泡面碗温泉，里面漂浮着Q弹的拉面和各种配料（如鱼板、鸡蛋）。周围环境色彩鲜艳，饱和度高，光线温暖柔和，线条流畅，充满想象力和舒适感。"
+      },
+      {
+        "id": "scene_4",
+        "name": "奢华零食卧室",
+        "description": "幻想中被各种零食“伺候”的卧室，如同国王般的享受。",
+        "mood": "奢华",
+        "prompt": "卡通画风。一间装饰豪华、舒适的卧室，大床上铺着柔软的床品，周围散落着各式各样诱人的零食和饮料。房间色彩鲜艳，饱和度高，光线温暖而富有层次感，线条流畅，营造出一种极致享受和放松的奢华感。"
+      },
+      {
+        "id": "scene_5",
+        "name": "办公室走廊",
+        "description": "连接各个工位和出口的走廊，下班前匆忙通过的路径。",
+        "mood": "压抑",
+        "prompt": "卡通画风。一条空旷的办公室走廊，两侧是紧闭的办公室门和规整的隔断。整体色调偏冷，低饱和度，光线平淡，线条笔直而规整，呈现出一种安静而略显压抑的办公楼内部环境。"
+      },
+      {
+        "id": "scene_6",
+        "name": "大楼出口/街景",
+        "description": "冲出办公室后，迎接自由和下班生活的户外场景。",
+        "mood": "自由",
+        "prompt": "卡通画风。一座现代办公大楼的玻璃门出口，门外是充满活力的城市街景。阳光明媚，色彩鲜艳，饱和度高，光线明亮，线条流畅，展现出一种自由、充满生机的户外氛围。"
+      }
+    ],
+    "storyboards": [
+      {
+        "id": "shot_1",
+        "shot_number": 1,
+        "scene_id": "scene_1",
+        "description": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。",
+        "duration_sec": 3,
+        "camera": "构图：中景，平视视角，正面机位；运镜：固定镜头。",
+        "scene_block": 1
+      },
+      {
+        "id": "shot_2",
+        "shot_number": 2,
+        "scene_id": "scene_1",
+        "description": "小猪-上班状态坐在工位上，面部特写，眼神呆滞，面色苍白，表情疲惫。",
+        "duration_sec": 3,
+        "camera": "构图：面部特写，平视视角，正面机位；运镜：镜头缓慢推近，聚焦空洞眼神。",
+        "scene_block": 1
+      },
+      {
+        "id": "shot_3",
+        "shot_number": 3,
+        "scene_id": "scene_1",
+        "description": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。一个半透明的小猪-幻想灵魂从他头顶缓缓飘出，身体朝向窗外，眼神充满渴望。",
+        "duration_sec": 3,
+        "camera": "构图：中景，平视视角，背面机位；运镜：镜头缓慢拉远，展现主体与灵魂。",
+        "scene_block": 1
+      },
+      {
+        "id": "shot_4",
+        "shot_number": 4,
+        "scene_id": "scene_1",
+        "description": "小猪-幻想灵魂漂浮在半空中，身体朝向窗外，圆润可爱的脸上充满期待，眼神渴望地望向远方。",
+        "duration_sec": 3,
+        "camera": "构图：近景，平视视角，侧面机位；运镜：镜头缓慢摇摄，跟随视线。",
+        "scene_block": 1
+      },
+      {
+        "id": "shot_5",
+        "shot_number": 5,
+        "scene_id": "scene_2",
+        "description": "小猪-幻想灵魂躺在零食堆中，身体陷在薯片袋里，双手抓着一包薯片，脸上洋溢着满足的笑容。周围堆满了色彩鲜艳的零食。",
+        "duration_sec": 3,
+        "camera": "构图：中景，平视视角，正面机位；运镜：固定镜头。",
+        "scene_block": 2
+      },
+      {
+        "id": "shot_6",
+        "shot_number": 6,
+        "scene_id": "scene_1",
+        "description": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。他机械地敲击着键盘。",
+        "duration_sec": 3,
+        "camera": "构图：近景，平视视角，正面机位；运镜：快速切换镜头。",
+        "scene_block": 3
+      },
+      {
+        "id": "shot_7",
+        "shot_number": 7,
+        "scene_id": "scene_3",
+        "description": "小猪-幻想灵魂全身浸泡在巨大的泡面温泉里，头部露出水面，双手搭在碗边，脸上露出极致舒适的表情。热气腾腾的泡面和配料清晰可见。",
+        "duration_sec": 3,
+        "camera": "构图：中景，平视视角，正面机位；运镜：镜头缓慢环绕。",
+        "scene_block": 4
+      },
+      {
+        "id": "shot_8",
+        "shot_number": 8,
+        "scene_id": "scene_1",
+        "description": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。他打了个哈欠，显得非常疲惫。",
+        "duration_sec": 3,
+        "camera": "构图：近景，平视视角，侧面机位；运镜：快速切换镜头。",
+        "scene_block": 5
+      },
+      {
+        "id": "shot_9",
+        "shot_number": 9,
+        "scene_id": "scene_4",
+        "description": "小猪-幻想灵魂躺在一张豪华大床上，身体被柔软的床品包裹，周围散落着各种零食饮料，它像国王般被零食包围，享受着被“伺候”的感觉。",
+        "duration_sec": 3,
+        "camera": "构图：全景，俯视视角，正面机位；运镜：镜头缓慢推近。",
+        "scene_block": 6
+      },
+      {
+        "id": "shot_10",
+        "shot_number": 10,
+        "scene_id": "scene_1",
+        "description": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。他伸了个懒腰，显得非常疲惫。",
+        "duration_sec": 3,
+        "camera": "构图：中景，平视视角，正面机位；运镜：固定镜头。",
+        "scene_block": 7
+      },
+      {
+        "id": "shot_11",
+        "shot_number": 11,
+        "scene_id": "scene_1",
+        "description": "小猪-上班状态坐在工位上，身体微微前倾，双手放在键盘上，眼神空洞地盯着电脑屏幕。突然，他猛地抬头，眼神瞬间恢复清明，脸上露出狂喜的表情。",
+        "duration_sec": 3,
+        "camera": "构图：近景，平视视角，正面机位；运镜：镜头快速推近。",
+        "scene_block": 7
+      },
+      {
+        "id": "shot_12",
+        "shot_number": 12,
+        "scene_id": "scene_1",
+        "description": "小猪-上班状态猛地从椅子上弹起，身体前倾，双手猛地推开键盘，脸上露出狂喜的表情，准备冲出工位。",
+        "duration_sec": 3,
+        "camera": "构图：中景，平视视角，正面机位；运镜：快速推拉镜头。",
+        "scene_block": 7
+      },
+      {
+        "id": "shot_13",
+        "shot_number": 13,
+        "scene_id": "scene_5",
+        "description": "小猪-上班状态在办公室走廊上飞奔，身体前倾，双臂摆动，脸上充满解脱和兴奋。走廊两侧的办公室门快速从画面中划过。",
+        "duration_sec": 3,
+        "camera": "构图：中景，平视视角，跟随机位；运镜：镜头快速平移。",
+        "scene_block": 8
+      },
+      {
+        "id": "shot_14",
+        "shot_number": 14,
+        "scene_id": "scene_6",
+        "description": "小猪-上班状态猛地冲出大楼的玻璃门，身体前倾，双臂张开，仿佛拥抱自由。阳光洒在他身上。",
+        "duration_sec": 3,
+        "camera": "构图：全景，平视视角，正面机位；运镜：镜头快速拉远。",
+        "scene_block": 9
+      },
+      {
+        "id": "shot_15",
+        "shot_number": 15,
+        "scene_id": "scene_6",
+        "description": "小猪-上班状态站在大楼出口外，身体挺直，仰头看向天空，脸上洋溢着灿烂的笑容，仿佛所有的疲惫一扫而空。身后是充满活力的城市街景。",
+        "duration_sec": 3,
+        "camera": "构图：中景，仰视视角，背面机位；运镜：镜头缓慢摇摄，从脚部摇到头部，再摇向天空。",
+        "scene_block": 9
+      }
+    ]
+  }
+}

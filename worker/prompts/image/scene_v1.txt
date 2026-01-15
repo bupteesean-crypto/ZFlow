@@ -1,0 +1,21 @@
+Create a clean 3:4 portrait cinematic environment illustration for a video storyboard scene.
+
+Scene summary: {{scene_summary}}
+Mood: {{mood}}
+Keywords: {{keywords}}
+Style: {{style}}
+
+Composition:
+- empty environment, no people or characters
+- clear foreground / midground / background layers
+- key props or architecture that explain the place
+- cinematic framing, stable horizon, readable depth
+- visible time-of-day cues and a clear light source
+
+Constraints:
+- no text, no captions, no logos, no watermark
+- no people, no characters, empty environment
+- avoid vague atmosphere words without visual anchors
+- avoid low-quality artifacts or distortion
+- avoid malformed anatomy or extra limbs
+- no busy patterns

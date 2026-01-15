@@ -1,9 +1,12 @@
 from dotenv import load_dotenv
 
 load_dotenv()
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.health import router as health_router
 from app.api.v1.response import fail
@@ -14,6 +17,11 @@ from app.core.logging import setup_logging
 setup_logging()
 
 app = FastAPI(title=settings.app_name)
+app.mount(
+    "/static/demo_material",
+    StaticFiles(directory=Path(__file__).resolve().parent / "cut_demo_material"),
+    name="demo-material",
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],

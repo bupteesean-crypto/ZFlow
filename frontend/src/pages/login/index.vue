@@ -1,15 +1,15 @@
 <template>
   <div class="login-page">
-    <nav class="glass-nav fixed top-0 left-0 right-0 z-50">
-      <div class="px-5 py-3 flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-          <div class="logo-badge">ZV</div>
+    <nav class="glass-nav">
+      <div class="top-nav">
+        <div class="top-nav__left">
+          <div class="logo-badge">ZF</div>
           <div>
-            <div class="text-sm uppercase tracking-[0.2em] text-slate-400">Z.Video</div>
-            <div class="text-xs text-slate-500">登录 / 注册</div>
+            <div class="brand-name">ZFlow</div>
+            <div class="brand-subtitle">登录 / 注册</div>
           </div>
         </div>
-        <div class="flex items-center gap-2 text-sm text-slate-300">
+        <div class="top-nav__right">
           <RouterLink to="/" class="nav-link">返回首页</RouterLink>
         </div>
       </div>
@@ -23,9 +23,9 @@
         </div>
         <div class="panel">
           <div class="logo">
-            <div class="logo-mark">ZV</div>
+            <div class="logo-mark">ZF</div>
             <div>
-              <div class="logo-subtitle">Z.Vid</div>
+              <div class="logo-subtitle">ZFlow</div>
               <div class="logo-title">欢迎回来</div>
             </div>
           </div>
@@ -218,12 +218,6 @@ const goBack = () => {
   background: var(--md-surface);
   color: var(--md-on-surface);
   padding-top: 72px;
-}
-
-.glass-nav {
-  background: rgba(255, 251, 254, 0.9);
-  border-bottom: 1px solid rgba(121, 116, 126, 0.2);
-  backdrop-filter: blur(12px);
 }
 
 .logo-badge {
@@ -482,7 +476,7 @@ input:focus {
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 50;
+  z-index: var(--layer-modal);
 }
 
 .modal.active {

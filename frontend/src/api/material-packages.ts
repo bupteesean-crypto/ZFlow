@@ -11,6 +11,7 @@ export type MaterialPackage = {
   project_id: string;
   package_name: string;
   status: string;
+  is_active?: boolean;
   summary?: string | null;
   materials?: Record<string, unknown>;
   created_at?: string;
@@ -38,6 +39,70 @@ export async function fetchMaterialPackage(packageId: string): Promise<MaterialP
   );
   if (data.code !== 0) {
     throw new Error(data.message || "Failed to load material package");
+  }
+  return data.data;
+}
+
+export async function submitMaterialPackageFeedback(
+  packageId: string,
+  feedback: string
+): Promise<MaterialPackage> {
+  const payload = { feedback };
+  const { data } = await request.post<ApiResponse<MaterialPackage>>(
+    `/material-packages/${packageId}/feedback`,
+    payload
+  );
+  if (data.code !== 0) {
+    throw new Error(data.message || "Failed to submit material package feedback");
+  }
+  return data.data;
+}
+
+export async function generateStoryboardImages(
+  packageId: string,
+  force = false
+): Promise<{ generated: unknown[]; material_package_id: string }> {
+  const payload = { force };
+  const { data } = await request.post<ApiResponse<{ generated: unknown[]; material_package_id: string }>>(
+    `/material-packages/${packageId}/storyboard-images`,
+    payload
+  );
+  if (data.code !== 0) {
+    throw new Error(data.message || "Failed to generate storyboard images");
+  }
+  return data.data;
+}
+
+export async function generateStoryboardVideos(
+  packageId: string,
+  payload: {
+    shot_id?: string;
+    prompt?: string;
+    feedback?: string;
+    force?: boolean;
+    model?: string;
+    size?: string;
+  } = {}
+): Promise<{ generated: unknown[]; skipped?: unknown[]; material_package_id: string }> {
+  const { data } = await request.post<
+    ApiResponse<{ generated: unknown[]; skipped?: unknown[]; material_package_id: string }>
+  >(`/material-packages/${packageId}/storyboard-videos`, payload);
+  if (data.code !== 0) {
+    throw new Error(data.message || "Failed to generate storyboard videos");
+  }
+  return data.data;
+}
+
+export async function updateMaterialPackage(
+  packageId: string,
+  payload: Partial<MaterialPackage>
+): Promise<MaterialPackage> {
+  const { data } = await request.put<ApiResponse<MaterialPackage>>(
+    `/material-packages/${packageId}`,
+    payload
+  );
+  if (data.code !== 0) {
+    throw new Error(data.message || "Failed to update material package");
   }
   return data.data;
 }

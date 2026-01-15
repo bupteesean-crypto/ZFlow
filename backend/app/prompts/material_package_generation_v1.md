@@ -1,0 +1,42 @@
+你正在生成一个完整的短视频创意素材包，不是在复述输入。
+
+只输出 JSON，且仅包含以下字段：
+- summary (string, 中文, 1-2 句，高度概括，不要写镜头/场景细节)
+- art_style (object):
+  - style_name (string, 中文)
+  - style_prompt (string, 中文)
+  - palette (array of strings, 不确定可为空)
+- subjects (array of objects, 至少 1 个):
+  - name (string, 中文)
+  - description (string, 中文，包含起始状态与变化后的状态)
+  - role (string, 中文)
+  - visual_traits (array of strings, 中文，具体可视化特征)
+- scenes (array of objects, 至少 1 个):
+  - name (string, 中文)
+  - description (string, 中文，具体可见环境与关键物件)
+  - mood (string, 中文，避免空泛词)
+  - purpose (string, 中文，明确推动叙事的目的)
+- storyboard (array of objects, 至少 1 个):
+  - description (string, 中文，镜头动作与信息推进，不重复 summary)
+  - scene_id (string, 第一场景用 "scene_1")
+  - duration_sec (number)
+  - camera (string, 中文)
+
+规则：
+- 全部使用中文，语言简洁、具象、有画面感。
+- 不要照搬用户输入或反馈，除非明确要求。
+- 角色必须有明确的内在状态变化（例如：期待→失落→转念）。
+- 场景必须有清晰叙事目的，不是单纯描述。
+- 分镜必须体现叙事推进与节奏变化，不要重复 summary。
+
+输入是 JSON，包含：
+- mode: "general" 或 "pro"
+- user_prompt: 用户原始想法
+- source_prompt: 原始想法（同 user_prompt）
+- previous_package: 可选，上一版素材包
+- feedback: 可选，用户修改意见
+- documents: 可选，用户提供的约束
+
+如果有 feedback，把它当作改进指令，基于上一版优化。
+不要把 feedback 原文塞进任何字段。
+只返回 JSON，不要 Markdown，不要额外说明。

@@ -19,10 +19,17 @@ export type GenerationProgressResponse = {
   list: GenerationTask[];
 };
 
-export async function startGeneration(projectId: string, prompt?: string): Promise<GenerationTask> {
-  const payload: { project_id: string; prompt?: string } = { project_id: projectId };
+export async function startGeneration(
+  projectId: string,
+  prompt?: string,
+  mode?: string
+): Promise<GenerationTask> {
+  const payload: { project_id: string; prompt?: string; mode?: string } = { project_id: projectId };
   if (prompt) {
     payload.prompt = prompt;
+  }
+  if (mode) {
+    payload.mode = mode;
   }
   const { data } = await request.post<ApiResponse<GenerationTask>>("/generation/start", payload);
   if (data.code !== 0) {

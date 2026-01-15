@@ -60,7 +60,7 @@ const close = () => {
   padding: 10px 16px;
   border-radius: 12px;
   font-size: 13px;
-  z-index: 1000;
+  z-index: var(--layer-toast);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
 }
 

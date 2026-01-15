@@ -1,0 +1,17 @@
+Create a clean 3:4 portrait character design sheet view for a single character.
+
+Character: {{character_name}}
+Description: {{character_description}}
+Visual traits: {{visual_traits}}
+Style: {{style}}
+View: {{view}}
+
+Composition:
+- full-body view, centered
+- clear silhouette and proportions
+- neutral background
+
+Constraints:
+- no text, no captions, no logos, no watermark
+- avoid extra limbs or distorted anatomy
+- consistent style across views

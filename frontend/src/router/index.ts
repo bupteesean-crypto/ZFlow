@@ -15,7 +15,7 @@ import TasksPage from "../pages/tasks/list.vue";
 import TaskDetailPage from "../pages/tasks/detail.vue";
 
 const routes: RouteRecordRaw[] = [
-  // Z.Video pages (new)
+  // ZFlow pages
   {
     path: "/",
     name: "landing",
@@ -99,7 +99,7 @@ router.beforeEach((to, _from, next) => {
   }
 
   // Require authentication for protected routes
-  const protectedRoutes = ['materials', 'editor', 'assets', 'space'];
+  const protectedRoutes = ['landing', 'materials', 'editor', 'assets', 'space'];
   if (protectedRoutes.includes(to.name as string) && !isAuthenticated) {
     next({ name: 'login', query: { redirect: to.fullPath } });
   } else {

@@ -4,8 +4,8 @@
     <nav class="glass-nav">
       <div class="top-nav">
         <div class="top-nav__left">
-          <div class="logo-badge">ZV</div>
-          <div class="brand-name">Z.Video</div>
+          <div class="logo-badge">ZF</div>
+          <div class="brand-name">ZFlow</div>
           <div v-if="showSpaceSelector" class="space-switcher">
             <span class="space-label">Space</span>
             <select class="space-select" v-model="currentSpace" @change="handleSpaceChange">
@@ -42,20 +42,7 @@
     </nav>
 
     <!-- Left Sidebar -->
-    <aside class="side-nav">
-      <div class="glass-side">
-        <RouterLink
-          v-for="item in navItems"
-          :key="item.name"
-          :to="item.to"
-          class="nav-link icon-only"
-          :class="{ active: isActive(item.to) }"
-          :data-label="item.label"
-        >
-          {{ item.icon }}
-        </RouterLink>
-      </div>
-    </aside>
+    <SideNav :items="navItems" />
 
     <!-- Profile Popover -->
     <div
@@ -117,7 +104,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { useRoute } from 'vue-router';
+import SideNav from './SideNav.vue';
 
 interface NavItem {
   name: string;
@@ -163,7 +150,6 @@ const emit = defineEmits<{
   spaceChange: [spaceId: string];
 }>();
 
-const route = useRoute();
 const avatarBtn = ref<HTMLElement | null>(null);
 const showProfile = ref(false);
 const toastVisible = ref(false);
@@ -177,13 +163,6 @@ const navItems: NavItem[] = [
   { name: 'assets', to: '/assets', icon: '⟡', label: '资产库' },
   { name: 'space', to: '/space', icon: '★', label: '我的空间' },
 ];
-
-const isActive = (path: string): boolean => {
-  if (path === '/') {
-    return route.path === '/' || route.path === '/landing';
-  }
-  return route.path.startsWith(path);
-};
 
 const toggleProfile = () => {
   showProfile.value = !showProfile.value;
@@ -237,66 +216,6 @@ if (typeof document !== 'undefined') {
   min-height: 100vh;
   background: var(--md-surface);
   color: var(--md-on-surface);
-}
-
-.glass-nav {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 50;
-  background: rgba(255, 251, 254, 0.9);
-  border-bottom: 1px solid rgba(121, 116, 126, 0.2);
-  backdrop-filter: blur(12px);
-}
-
-.top-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 20px;
-}
-
-.top-nav__left,
-.top-nav__right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.brand-name {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
-  color: var(--md-on-surface-variant);
-}
-
-.space-switcher {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  padding-left: 16px;
-  margin-left: 16px;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.space-label {
-  font-size: 12px;
-  color: var(--md-on-surface-variant);
-}
-
-.search-wrap {
-  position: relative;
-  display: none;
-}
-
-.top-nav__meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--md-on-surface-variant);
 }
 
 .logo-badge {
@@ -389,80 +308,6 @@ if (typeof document !== 'undefined') {
   object-fit: cover;
 }
 
-.side-nav {
-  position: fixed;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 64px;
-  z-index: 40;
-}
-
-.glass-side {
-  background: rgba(243, 237, 247, 0.9);
-  border-right: 1px solid rgba(121, 116, 126, 0.2);
-  border-radius: 16px;
-  padding: 16px 0;
-  margin: 0 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  box-shadow: 0 16px 28px rgba(0, 0, 0, 0.18);
-}
-
-.nav-link {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 12px;
-  font-size: 15px;
-  border-radius: 12px;
-  color: var(--md-on-surface-variant);
-  border: 1px solid transparent;
-  transition: 0.2s ease;
-  text-decoration: none;
-  width: 48px;
-  height: 48px;
-  position: relative;
-  box-shadow: 0 10px 20px rgba(26, 18, 44, 0.12);
-}
-
-.nav-link:hover {
-  border-color: rgba(103, 80, 164, 0.2);
-  background: rgba(103, 80, 164, 0.1);
-  color: var(--md-on-surface);
-  transform: translateY(-2px);
-}
-
-.nav-link.active {
-  border-color: rgba(103, 80, 164, 0.4);
-  background: rgba(103, 80, 164, 0.18);
-  color: var(--md-on-surface);
-}
-
-.nav-link.icon-only::after {
-  content: attr(data-label);
-  position: absolute;
-  left: 60px;
-  white-space: nowrap;
-  padding: 6px 10px;
-  border-radius: 10px;
-  background: var(--md-surface-container);
-  border: 1px solid rgba(121, 116, 126, 0.2);
-  color: var(--md-on-surface);
-  font-size: 12px;
-  opacity: 0;
-  transform: translateY(4px);
-  pointer-events: none;
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.nav-link.icon-only:hover::after {
-  opacity: 1;
-  transform: translateY(0);
-}
-
 .profile-popover {
   position: absolute;
   top: 60px;
@@ -474,7 +319,7 @@ if (typeof document !== 'undefined') {
   box-shadow: 0 18px 44px rgba(26, 18, 44, 0.18);
   padding: 14px;
   backdrop-filter: blur(12px);
-  z-index: 120;
+  z-index: var(--layer-popover);
 }
 
 .popover-header {
@@ -634,19 +479,7 @@ if (typeof document !== 'undefined') {
   border: 1px solid rgba(121, 116, 126, 0.2);
   box-shadow: 0 10px 22px rgba(26, 18, 44, 0.12);
   font-size: 12px;
-  z-index: 200;
-}
-
-@media (min-width: 768px) {
-  .search-wrap {
-    display: block;
-  }
-}
-
-@media (min-width: 1024px) {
-  .space-switcher {
-    display: flex;
-  }
+  z-index: var(--layer-toast);
 }
 
 .app-shell__content {

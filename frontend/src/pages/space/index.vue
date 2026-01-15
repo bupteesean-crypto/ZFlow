@@ -338,7 +338,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;
+  z-index: var(--layer-modal);
 }
 
 .space-selector {
@@ -375,19 +375,4 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.text-2xl { font-size: 24px; }
-.font-semibold { font-weight: 600; }
-.text-xs { font-size: 12px; }
-.text-sm { font-size: 14px; }
-.text-lg { font-size: 18px; }
-.text-slate-100 { color: var(--md-on-surface); }
-.text-slate-400 { color: var(--md-on-surface-variant); }
-.mt-1 { margin-top: 4px; }
-.mt-2 { margin-top: 8px; }
-.mb-1 { margin-bottom: 4px; }
-.mb-3 { margin-bottom: 12px; }
-.flex { display: flex; }
-.items-center { align-items: center; }
-.justify-between { justify-content: space-between; }
-.gap-2 { gap: 8px; }
 </style>
