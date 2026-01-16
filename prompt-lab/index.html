@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ZFlow Prompt Lab</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+        background: #f6f7fb;
+        color: #111827;
+      }
+      h1 {
+        margin: 0 0 16px 0;
+        font-size: 22px;
+      }
+      .note {
+        font-size: 12px;
+        color: #6b7280;
+        margin-bottom: 16px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+      }
+      .card h2 {
+        margin: 0 0 12px 0;
+        font-size: 16px;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        color: #6b7280;
+        margin: 10px 0 4px 0;
+      }
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #111827;
+        font-size: 13px;
+      }
+      textarea {
+        min-height: 80px;
+        resize: vertical;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .row > * {
+        flex: 1;
+      }
+      button {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border: 0;
+        border-radius: 8px;
+        background: #111827;
+        color: #ffffff;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #6b7280;
+      }
+      pre {
+        background: #0f172a;
+        color: #e2e8f0;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-height: 90px;
+      }
+      .preview {
+        margin-top: 12px;
+        border-radius: 8px;
+        border: 1px dashed #d1d5db;
+        padding: 8px;
+        text-align: center;
+      }
+      .preview img,
+      .preview video {
+        max-width: 100%;
+        border-radius: 6px;
+      }
+      .pill {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #eef2ff;
+        color: #3730a3;
+        font-size: 11px;
+      }
+      .muted {
+        color: #6b7280;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ZFlow Prompt Lab</h1>
+    <div class="note">
+      Keys are stored in localStorage for convenience. If requests fail due to
+      CORS, run a local proxy or use backend routes.
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>GLM Chat</h2>
+        <label>API Key</label>
+        <input id="glm-key" type="password" placeholder="GLM API key" />
+        <label>Model</label>
+        <input id="glm-model" value="glm-4.5" />
+        <label>System Prompt</label>
+        <textarea id="glm-system">You are a helpful assistant.</textarea>
+        <label>User Prompt</label>
+        <textarea id="glm-user" placeholder="Describe the story..."></textarea>
+        <label>Temperature</label>
+        <input id="glm-temp" type="number" min="0" max="2" step="0.1" value="0.7" />
+        <div class="row">
+          <button id="glm-run">Run</button>
+          <button id="glm-clear" class="secondary">Clear</button>
+        </div>
+        <label>Response</label>
+        <pre id="glm-output"></pre>
+      </div>
+
+      <div class="card">
+        <h2>Seedream Image</h2>
+        <label>API Key</label>
+        <input id="seed-key" type="password" placeholder="Seedream API key" />
+        <label>Model</label>
+        <input id="seed-model" value="doubao-seedream-4.5" />
+        <div class="row">
+          <div>
+            <label>Size</label>
+            <input id="seed-size" value="2K" />
+          </div>
+          <div>
+            <label>Use CDN</label>
+            <select id="seed-cdn">
+              <option value="on">Convert GitHub raw to jsDelivr</option>
+              <option value="off">Keep raw URLs</option>
+            </select>
+          </div>
+        </div>
+        <label>Prompt</label>
+        <textarea id="seed-prompt" placeholder="Describe the image..."></textarea>
+        <label>Reference Images (one URL per line)</label>
+        <textarea id="seed-images"></textarea>
+        <div class="row">
+          <button id="seed-run">Run</button>
+          <button id="seed-clear" class="secondary">Clear</button>
+        </div>
+        <label>Response</label>
+        <pre id="seed-output"></pre>
+        <div class="preview" id="seed-preview">
+          <span class="muted">No image preview</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Vidu Video</h2>
+        <label>API Key</label>
+        <input id="vidu-key" type="password" placeholder="Vidu API key" />
+        <label>Model</label>
+        <input id="vidu-model" value="viduq2-pro-img2video" />
+        <div class="row">
+          <div>
+            <label>Size</label>
+            <input id="vidu-size" value="1280x720" />
+          </div>
+          <div>
+            <label>Duration</label>
+            <input id="vidu-duration" value="5" />
+          </div>
+        </div>
+        <label>Image URL (single)</label>
+        <input id="vidu-image" placeholder="https://..." />
+        <label>Prompt</label>
+        <textarea id="vidu-prompt" placeholder="Describe the motion..."></textarea>
+        <div class="row">
+          <button id="vidu-run">Run</button>
+          <button id="vidu-clear" class="secondary">Clear</button>
+        </div>
+        <label>Response</label>
+        <pre id="vidu-output"></pre>
+        <div class="preview" id="vidu-preview">
+          <span class="muted">No video preview</span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const api = {
+        glm: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+        seedream: "https://open.bigmodel.cn/api/paas/v4/images/generations",
+        vidu: "https://open.bigmodel.cn/api/paas/v4/videos/generations",
+      };
+
+      const storage = {
+        get(key, fallback = "") {
+          const value = window.localStorage.getItem(key);
+          return value === null ? fallback : value;
+        },
+        set(key, value) {
+          window.localStorage.setItem(key, value);
+        },
+      };
+
+      function jsonOutput(el, data) {
+        if (data === undefined) {
+          el.textContent = "";
+          return;
+        }
+        el.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+      }
+
+      function convertToCdn(url) {
+        const match = url.match(
+          /^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/
+        );
+        if (!match) return url;
+        const [, user, repo, branch, path] = match;
+        return `https://cdn.jsdelivr.net/gh/${user}/${repo}@${branch}/${path}`;
+      }
+
+      function findFirstUrl(obj) {
+        if (!obj || typeof obj !== "object") return null;
+        if (Array.isArray(obj)) {
+          for (const item of obj) {
+            const found = findFirstUrl(item);
+            if (found) return found;
+          }
+          return null;
+        }
+        for (const [key, value] of Object.entries(obj)) {
+          if (typeof value === "string" && key.toLowerCase().includes("url")) {
+            return value;
+          }
+          const nested = findFirstUrl(value);
+          if (nested) return nested;
+        }
+        return null;
+      }
+
+      function setPreview(container, url, kind) {
+        container.innerHTML = "";
+        if (!url) {
+          container.innerHTML = '<span class="muted">No preview</span>';
+          return;
+        }
+        if (kind === "video") {
+          const video = document.createElement("video");
+          video.src = url;
+          video.controls = true;
+          container.appendChild(video);
+          return;
+        }
+        const img = document.createElement("img");
+        img.src = url;
+        container.appendChild(img);
+      }
+
+      async function postJson(url, key, payload) {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${key}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        const text = await response.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (err) {
+          data = text;
+        }
+        if (!response.ok) {
+          throw new Error(
+            typeof data === "string" ? data : JSON.stringify(data, null, 2)
+          );
+        }
+        return data;
+      }
+
+      function initField(id, storageKey) {
+        const el = document.getElementById(id);
+        el.value = storage.get(storageKey, el.value);
+        el.addEventListener("input", () => storage.set(storageKey, el.value));
+        return el;
+      }
+
+      const glmKey = initField("glm-key", "glm-key");
+      const glmModel = initField("glm-model", "glm-model");
+      const glmSystem = initField("glm-system", "glm-system");
+      const glmUser = initField("glm-user", "glm-user");
+      const glmTemp = initField("glm-temp", "glm-temp");
+      const glmOutput = document.getElementById("glm-output");
+
+      document.getElementById("glm-run").addEventListener("click", async () => {
+        jsonOutput(glmOutput, "Loading...");
+        try {
+          const payload = {
+            model: glmModel.value.trim(),
+            messages: [
+              { role: "system", content: glmSystem.value.trim() },
+              { role: "user", content: glmUser.value.trim() },
+            ],
+            temperature: Number(glmTemp.value) || 0.7,
+          };
+          const data = await postJson(api.glm, glmKey.value.trim(), payload);
+          jsonOutput(glmOutput, data);
+        } catch (err) {
+          jsonOutput(glmOutput, `Error: ${err.message}`);
+        }
+      });
+
+      document.getElementById("glm-clear").addEventListener("click", () => {
+        jsonOutput(glmOutput);
+      });
+
+      const seedKey = initField("seed-key", "seed-key");
+      const seedModel = initField("seed-model", "seed-model");
+      const seedSize = initField("seed-size", "seed-size");
+      const seedCdn = initField("seed-cdn", "seed-cdn");
+      const seedPrompt = initField("seed-prompt", "seed-prompt");
+      const seedImages = initField("seed-images", "seed-images");
+      const seedOutput = document.getElementById("seed-output");
+      const seedPreview = document.getElementById("seed-preview");
+
+      document.getElementById("seed-run").addEventListener("click", async () => {
+        jsonOutput(seedOutput, "Loading...");
+        setPreview(seedPreview, null);
+        try {
+          const rawImages = seedImages.value
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean);
+          const images =
+            seedCdn.value === "on"
+              ? rawImages.map(convertToCdn)
+              : rawImages;
+          const payload = {
+            model: seedModel.value.trim(),
+            prompt: seedPrompt.value.trim(),
+            images,
+          };
+          if (seedSize.value.trim()) {
+            payload.size = seedSize.value.trim();
+          }
+          const data = await postJson(api.seedream, seedKey.value.trim(), payload);
+          jsonOutput(seedOutput, data);
+          const url = findFirstUrl(data);
+          setPreview(seedPreview, url, "image");
+        } catch (err) {
+          jsonOutput(seedOutput, `Error: ${err.message}`);
+        }
+      });
+
+      document.getElementById("seed-clear").addEventListener("click", () => {
+        jsonOutput(seedOutput);
+        setPreview(seedPreview, null);
+      });
+
+      const viduKey = initField("vidu-key", "vidu-key");
+      const viduModel = initField("vidu-model", "vidu-model");
+      const viduSize = initField("vidu-size", "vidu-size");
+      const viduDuration = initField("vidu-duration", "vidu-duration");
+      const viduImage = initField("vidu-image", "vidu-image");
+      const viduPrompt = initField("vidu-prompt", "vidu-prompt");
+      const viduOutput = document.getElementById("vidu-output");
+      const viduPreview = document.getElementById("vidu-preview");
+
+      document.getElementById("vidu-run").addEventListener("click", async () => {
+        jsonOutput(viduOutput, "Loading...");
+        setPreview(viduPreview, null);
+        try {
+          const payload = {
+            model: viduModel.value.trim(),
+            image_url: [viduImage.value.trim()].filter(Boolean),
+            prompt: viduPrompt.value.trim(),
+          };
+          if (viduSize.value.trim()) {
+            payload.size = viduSize.value.trim();
+          }
+          if (viduDuration.value.trim()) {
+            payload.duration = String(viduDuration.value.trim());
+          }
+          const data = await postJson(api.vidu, viduKey.value.trim(), payload);
+          jsonOutput(viduOutput, data);
+          const url = findFirstUrl(data);
+          setPreview(viduPreview, url, "video");
+        } catch (err) {
+          jsonOutput(viduOutput, `Error: ${err.message}`);
+        }
+      });
+
+      document.getElementById("vidu-clear").addEventListener("click", () => {
+        jsonOutput(viduOutput);
+        setPreview(viduPreview, null);
+      });
+    </script>
+  </body>
+</html>

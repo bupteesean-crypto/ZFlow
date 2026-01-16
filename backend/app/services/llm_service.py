@@ -28,6 +28,12 @@ BLUEPRINT_REWRITE_PATH = (
 PACKAGE_NAME_PATH = (
     Path(__file__).resolve().parents[1] / "prompts" / "package_name_v1.md"
 )
+REFINE_SUMMARY_PATH = Path(__file__).resolve().parents[1] / "prompts" / "refine_summary_v1.md"
+REFINE_ART_STYLE_PATH = Path(__file__).resolve().parents[1] / "prompts" / "refine_art_style_v1.md"
+REFINE_SUBJECTS_PATH = Path(__file__).resolve().parents[1] / "prompts" / "refine_subjects_v1.md"
+REFINE_SCENES_PATH = Path(__file__).resolve().parents[1] / "prompts" / "refine_scenes_v1.md"
+REFINE_STORYBOARD_PATH = Path(__file__).resolve().parents[1] / "prompts" / "refine_storyboard_v1.md"
+REVIEW_PACKAGE_PATH = Path(__file__).resolve().parents[1] / "prompts" / "review_material_package_v1.md"
 MATERIAL_PACKAGE_PROMPT_PATH = (
     Path(__file__).resolve().parents[1]
     / "prompts"
@@ -73,6 +79,20 @@ DEFAULT_PACKAGE_NAME_PROMPT = (
     "memorable and relevant. No Markdown, no extra text."
 )
 DEFAULT_MATERIAL_PACKAGE_PROMPT = DEFAULT_SYSTEM_PROMPT
+DEFAULT_REFINE_SUMMARY_PROMPT = (
+    "Return JSON only with keys: summary, keywords. "
+    "Rewrite the summary and keywords for clarity and consistency."
+)
+DEFAULT_REFINE_ART_STYLE_PROMPT = (
+    "Return JSON only with key art_style containing style_name, style_prompt, palette."
+)
+DEFAULT_REFINE_SUBJECTS_PROMPT = "Return JSON only with key subjects."
+DEFAULT_REFINE_SCENES_PROMPT = "Return JSON only with key scenes."
+DEFAULT_REFINE_STORYBOARD_PROMPT = "Return JSON only with key storyboard."
+DEFAULT_REVIEW_PROMPT = (
+    "Return JSON only with keys: pass, feedback(summary, art_style, subjects, scenes, storyboard)."
+)
+MAX_REVIEW_ATTEMPTS = 5
 
 GENERAL_MODE_BLOCK = (
     "Mode: general. Expand a short idea into a complete short-form video creative plan. "
@@ -237,6 +257,130 @@ def _normalize_storyboard(value: object, fallback_text: str) -> list[dict]:
     return shots if shots else _default_storyboard(fallback_text)
 
 
+def _normalize_summary_payload(parsed: dict, base_summary: str, base_keywords: list[str]) -> tuple[str, list[str]]:
+    summary = _normalize_text(parsed.get("summary"), base_summary)
+    keywords = _normalize_keywords(parsed.get("keywords"))
+    if not keywords:
+        keywords = base_keywords or []
+    return summary, keywords
+
+
+def _normalize_subjects_with_prompts(
+    value: object,
+    base_subjects: list[dict],
+    fallback_text: str,
+) -> list[dict]:
+    if not isinstance(value, list):
+        value = []
+    if not base_subjects:
+        base_subjects = _default_subjects(fallback_text)
+    merged: list[dict] = []
+    for idx, base in enumerate(base_subjects):
+        item = value[idx] if idx < len(value) and isinstance(value[idx], dict) else {}
+        name = _normalize_text(item.get("name"), _normalize_text(base.get("name"), f"Character {idx + 1}"))
+        description = _normalize_text(item.get("description"), _normalize_text(base.get("description"), fallback_text))
+        role = _normalize_text(item.get("role"), _normalize_text(base.get("role"), ""))
+        traits = item.get("visual_traits") if isinstance(item.get("visual_traits"), list) else base.get("visual_traits")
+        traits = [str(trait).strip() for trait in (traits or []) if str(trait).strip()]
+        image_prompt = _normalize_text(item.get("image_prompt"), _normalize_text(base.get("image_prompt"), ""))
+        if not image_prompt:
+            image_prompt = f"{name}. {description}".strip()
+            if traits:
+                image_prompt = f"{image_prompt} Visual traits: {', '.join(traits)}"
+        merged.append(
+            {
+                "name": name,
+                "description": description,
+                "role": role,
+                "visual_traits": traits,
+                "image_prompt": image_prompt,
+            }
+        )
+    return merged
+
+
+def _normalize_scenes_with_prompts(
+    value: object,
+    base_scenes: list[dict],
+    fallback_text: str,
+) -> list[dict]:
+    if not isinstance(value, list):
+        value = []
+    if not base_scenes:
+        base_scenes = _default_scenes(fallback_text)
+    merged: list[dict] = []
+    for idx, base in enumerate(base_scenes):
+        item = value[idx] if idx < len(value) and isinstance(value[idx], dict) else {}
+        name = _normalize_text(item.get("name"), _normalize_text(base.get("name"), f"Scene {idx + 1}"))
+        description = _normalize_text(item.get("description"), _normalize_text(base.get("description"), fallback_text))
+        mood = _normalize_text(item.get("mood"), _normalize_text(base.get("mood"), "neutral"))
+        purpose = _normalize_text(item.get("purpose"), _normalize_text(base.get("purpose"), ""))
+        image_prompt = _normalize_text(item.get("image_prompt"), _normalize_text(base.get("image_prompt"), ""))
+        if not image_prompt:
+            image_prompt = f"{description}".strip()
+            if mood:
+                image_prompt = f"{image_prompt} Mood: {mood}".strip()
+        merged.append(
+            {
+                "name": name,
+                "description": description,
+                "mood": mood,
+                "purpose": purpose,
+                "image_prompt": image_prompt,
+            }
+        )
+    return merged
+
+
+def _normalize_storyboard_with_prompts(
+    value: object,
+    base_storyboard: list[dict],
+    fallback_text: str,
+) -> list[dict]:
+    if not isinstance(value, list):
+        value = []
+    if not base_storyboard:
+        base_storyboard = _default_storyboard(fallback_text)
+    merged: list[dict] = []
+    for idx, base in enumerate(base_storyboard):
+        item = value[idx] if idx < len(value) and isinstance(value[idx], dict) else {}
+        description = _normalize_text(item.get("description"), _normalize_text(base.get("description"), fallback_text))
+        scene_id = _normalize_text(item.get("scene_id"), _normalize_text(base.get("scene_id"), "scene_1"))
+        duration_raw = item.get("duration_sec", base.get("duration_sec"))
+        duration_sec = int(duration_raw) if isinstance(duration_raw, (int, float)) and duration_raw > 0 else 3
+        camera = _normalize_text(item.get("camera"), _normalize_text(base.get("camera"), ""))
+        image_prompt = _normalize_text(item.get("image_prompt"), _normalize_text(base.get("image_prompt"), ""))
+        if not image_prompt:
+            image_prompt = description
+        subject_names = item.get("subject_names") if isinstance(item.get("subject_names"), list) else []
+        subject_names = [str(name).strip() for name in subject_names if str(name).strip()]
+        subject_ids = item.get("subject_ids") if isinstance(item.get("subject_ids"), list) else []
+        subject_ids = [str(value).strip() for value in subject_ids if str(value).strip()]
+        merged.append(
+            {
+                "description": description,
+                "scene_id": scene_id,
+                "duration_sec": duration_sec,
+                "camera": camera,
+                "image_prompt": image_prompt,
+                "subject_names": subject_names,
+                "subject_ids": subject_ids,
+            }
+        )
+    return merged
+
+
+def _normalize_review_result(parsed: dict) -> tuple[bool, dict]:
+    if not isinstance(parsed, dict):
+        return False, {}
+    passed = parsed.get("pass") is True
+    feedback_raw = parsed.get("feedback") if isinstance(parsed.get("feedback"), dict) else {}
+    feedback = {}
+    for key in ("summary", "art_style", "subjects", "scenes", "storyboard"):
+        feedback[key] = _normalize_text(feedback_raw.get(key), "")
+    return passed, feedback
+
+
 def _coerce_structured_output(parsed: dict, fallback_text: str) -> dict:
     summary = _normalize_text(parsed.get("summary"), fallback_text)
     keywords = _normalize_keywords(parsed.get("keywords"))
@@ -293,6 +437,7 @@ def _normalize_material_package_struct(parsed: dict) -> dict:
             else []
         )
         traits = [str(trait).strip() for trait in traits if str(trait).strip()]
+        image_prompt = _normalize_text(item.get("image_prompt"), "")
         if not name and not description:
             continue
         subjects.append(
@@ -301,6 +446,7 @@ def _normalize_material_package_struct(parsed: dict) -> dict:
                 "description": description,
                 "role": role,
                 "visual_traits": traits,
+                "image_prompt": image_prompt,
             }
         )
 
@@ -313,6 +459,7 @@ def _normalize_material_package_struct(parsed: dict) -> dict:
         description = _normalize_text(item.get("description"), "")
         mood = _normalize_text(item.get("mood"), "")
         purpose = _normalize_text(item.get("purpose"), "")
+        image_prompt = _normalize_text(item.get("image_prompt"), "")
         if not name and not description:
             continue
         scenes.append(
@@ -321,6 +468,7 @@ def _normalize_material_package_struct(parsed: dict) -> dict:
                 "description": description,
                 "mood": mood,
                 "purpose": purpose,
+                "image_prompt": image_prompt,
             }
         )
 
@@ -340,6 +488,11 @@ def _normalize_material_package_struct(parsed: dict) -> dict:
             else 0
         )
         camera = _normalize_text(item.get("camera"), "")
+        image_prompt = _normalize_text(item.get("image_prompt"), "")
+        subject_names = item.get("subject_names") if isinstance(item.get("subject_names"), list) else []
+        subject_names = [str(name).strip() for name in subject_names if str(name).strip()]
+        subject_ids = item.get("subject_ids") if isinstance(item.get("subject_ids"), list) else []
+        subject_ids = [str(value).strip() for value in subject_ids if str(value).strip()]
         if not description:
             continue
         storyboard.append(
@@ -348,6 +501,9 @@ def _normalize_material_package_struct(parsed: dict) -> dict:
                 "scene_id": scene_id,
                 "duration_sec": duration_sec,
                 "camera": camera,
+                "image_prompt": image_prompt,
+                "subject_names": subject_names,
+                "subject_ids": subject_ids,
             }
         )
 
@@ -521,6 +677,62 @@ BLUEPRINT_REWRITE_PROMPT = _load_blueprint_prompt()
 PACKAGE_NAME_PROMPT = _load_package_name_prompt()
 
 
+def _load_refine_summary_prompt() -> str:
+    try:
+        return REFINE_SUMMARY_PATH.read_text(encoding="utf-8").strip() or DEFAULT_REFINE_SUMMARY_PROMPT
+    except OSError:
+        logger.warning("Failed to read refine summary prompt at %s; using default prompt", REFINE_SUMMARY_PATH)
+        return DEFAULT_REFINE_SUMMARY_PROMPT
+
+
+def _load_refine_art_style_prompt() -> str:
+    try:
+        return REFINE_ART_STYLE_PATH.read_text(encoding="utf-8").strip() or DEFAULT_REFINE_ART_STYLE_PROMPT
+    except OSError:
+        logger.warning("Failed to read refine art style prompt at %s; using default prompt", REFINE_ART_STYLE_PATH)
+        return DEFAULT_REFINE_ART_STYLE_PROMPT
+
+
+def _load_refine_subjects_prompt() -> str:
+    try:
+        return REFINE_SUBJECTS_PATH.read_text(encoding="utf-8").strip() or DEFAULT_REFINE_SUBJECTS_PROMPT
+    except OSError:
+        logger.warning("Failed to read refine subjects prompt at %s; using default prompt", REFINE_SUBJECTS_PATH)
+        return DEFAULT_REFINE_SUBJECTS_PROMPT
+
+
+def _load_refine_scenes_prompt() -> str:
+    try:
+        return REFINE_SCENES_PATH.read_text(encoding="utf-8").strip() or DEFAULT_REFINE_SCENES_PROMPT
+    except OSError:
+        logger.warning("Failed to read refine scenes prompt at %s; using default prompt", REFINE_SCENES_PATH)
+        return DEFAULT_REFINE_SCENES_PROMPT
+
+
+def _load_refine_storyboard_prompt() -> str:
+    try:
+        return REFINE_STORYBOARD_PATH.read_text(encoding="utf-8").strip() or DEFAULT_REFINE_STORYBOARD_PROMPT
+    except OSError:
+        logger.warning("Failed to read refine storyboard prompt at %s; using default prompt", REFINE_STORYBOARD_PATH)
+        return DEFAULT_REFINE_STORYBOARD_PROMPT
+
+
+def _load_review_prompt() -> str:
+    try:
+        return REVIEW_PACKAGE_PATH.read_text(encoding="utf-8").strip() or DEFAULT_REVIEW_PROMPT
+    except OSError:
+        logger.warning("Failed to read review prompt at %s; using default prompt", REVIEW_PACKAGE_PATH)
+        return DEFAULT_REVIEW_PROMPT
+
+
+REFINE_SUMMARY_PROMPT = _load_refine_summary_prompt()
+REFINE_ART_STYLE_PROMPT = _load_refine_art_style_prompt()
+REFINE_SUBJECTS_PROMPT = _load_refine_subjects_prompt()
+REFINE_SCENES_PROMPT = _load_refine_scenes_prompt()
+REFINE_STORYBOARD_PROMPT = _load_refine_storyboard_prompt()
+REVIEW_PACKAGE_PROMPT = _load_review_prompt()
+
+
 class LLMService:
     def __init__(self) -> None:
         self._provider = settings.llm_provider
@@ -551,6 +763,225 @@ class LLMService:
             return f"{MATERIAL_PACKAGE_PROMPT}\n\n{PRO_MODE_BLOCK}", 0.4
         return f"{MATERIAL_PACKAGE_PROMPT}\n\n{GENERAL_MODE_BLOCK}", 0.7
 
+    def _generate_base_package(
+        self,
+        prompt: str,
+        mode: str,
+        previous_package: dict | None,
+        feedback: str | None,
+        documents: list | None,
+    ) -> dict:
+        system_prompt, temperature = self._build_material_package_prompt(mode)
+        payload_context = {
+            "mode": _normalize_generation_mode(mode),
+            "user_prompt": (prompt or "").strip(),
+            "source_prompt": (prompt or "").strip(),
+            "previous_package": previous_package or {},
+            "feedback": (feedback or "").strip(),
+            "documents": documents or [],
+        }
+        logger.info(
+            "llm.call stage=material_package_base mode=%s prompt_chars=%s feedback=%s",
+            payload_context["mode"],
+            len(payload_context["user_prompt"]),
+            bool(payload_context["feedback"]),
+        )
+        content = self._call_glm(system_prompt, payload_context, temperature=temperature)
+        parsed = self._parse_json_dict(content)
+        normalized = _normalize_material_package_struct(parsed)
+        valid, reason = _validate_material_package_struct(normalized)
+        if not valid:
+            logger.error("LLM output invalid for base package generation: %s", reason)
+            raise ValueError(f"Invalid LLM output: {reason}")
+        return normalized
+
+    def _refine_summary(
+        self,
+        prompt: str,
+        base_summary: str,
+        base_keywords: list[str],
+        feedback: str | None,
+    ) -> tuple[str, list[str]]:
+        payload_context = {
+            "user_prompt": (prompt or "").strip(),
+            "base_summary": (base_summary or "").strip(),
+            "base_keywords": base_keywords or [],
+            "feedback": (feedback or "").strip(),
+        }
+        content = self._call_glm(REFINE_SUMMARY_PROMPT, payload_context, temperature=0.4)
+        parsed = self._parse_json_dict(content)
+        return _normalize_summary_payload(parsed, base_summary, base_keywords)
+
+    def _refine_art_style(
+        self,
+        prompt: str,
+        base_art_style: dict,
+        summary: str,
+        keywords: list[str],
+        feedback: str | None,
+    ) -> dict:
+        payload_context = {
+            "user_prompt": (prompt or "").strip(),
+            "base_art_style": _normalize_art_style(base_art_style or {}),
+            "summary": (summary or "").strip(),
+            "keywords": keywords or [],
+            "feedback": (feedback or "").strip(),
+        }
+        content = self._call_glm(REFINE_ART_STYLE_PROMPT, payload_context, temperature=0.4)
+        parsed = self._parse_json_dict(content)
+        art_style = parsed.get("art_style") if isinstance(parsed.get("art_style"), dict) else parsed
+        return _normalize_art_style(art_style or base_art_style)
+
+    def _refine_subjects(
+        self,
+        prompt: str,
+        base_subjects: list[dict],
+        summary: str,
+        keywords: list[str],
+        art_style: dict,
+        feedback: str | None,
+    ) -> list[dict]:
+        payload_context = {
+            "user_prompt": (prompt or "").strip(),
+            "base_subjects": base_subjects or [],
+            "summary": (summary or "").strip(),
+            "keywords": keywords or [],
+            "art_style": _normalize_art_style(art_style or {}),
+            "feedback": (feedback or "").strip(),
+        }
+        content = self._call_glm(REFINE_SUBJECTS_PROMPT, payload_context, temperature=0.4)
+        parsed = self._parse_json_dict(content)
+        subjects = parsed.get("subjects") if isinstance(parsed.get("subjects"), list) else parsed
+        return _normalize_subjects_with_prompts(subjects, base_subjects, summary)
+
+    def _refine_scenes(
+        self,
+        prompt: str,
+        base_scenes: list[dict],
+        summary: str,
+        keywords: list[str],
+        art_style: dict,
+        subjects: list[dict],
+        feedback: str | None,
+    ) -> list[dict]:
+        payload_context = {
+            "user_prompt": (prompt or "").strip(),
+            "base_scenes": base_scenes or [],
+            "summary": (summary or "").strip(),
+            "keywords": keywords or [],
+            "art_style": _normalize_art_style(art_style or {}),
+            "subjects": subjects or [],
+            "feedback": (feedback or "").strip(),
+        }
+        content = self._call_glm(REFINE_SCENES_PROMPT, payload_context, temperature=0.4)
+        parsed = self._parse_json_dict(content)
+        scenes = parsed.get("scenes") if isinstance(parsed.get("scenes"), list) else parsed
+        return _normalize_scenes_with_prompts(scenes, base_scenes, summary)
+
+    def _refine_storyboard(
+        self,
+        prompt: str,
+        base_storyboard: list[dict],
+        summary: str,
+        keywords: list[str],
+        art_style: dict,
+        scenes: list[dict],
+        subjects: list[dict],
+        feedback: str | None,
+    ) -> list[dict]:
+        payload_context = {
+            "user_prompt": (prompt or "").strip(),
+            "base_storyboard": base_storyboard or [],
+            "summary": (summary or "").strip(),
+            "keywords": keywords or [],
+            "art_style": _normalize_art_style(art_style or {}),
+            "scenes": scenes or [],
+            "subjects": subjects or [],
+            "feedback": (feedback or "").strip(),
+        }
+        content = self._call_glm(REFINE_STORYBOARD_PROMPT, payload_context, temperature=0.4)
+        parsed = self._parse_json_dict(content)
+        storyboard = parsed.get("storyboard") if isinstance(parsed.get("storyboard"), list) else parsed
+        return _normalize_storyboard_with_prompts(storyboard, base_storyboard, summary)
+
+    def _review_package(self, prompt: str, package_struct: dict) -> tuple[bool, dict]:
+        payload_context = {
+            "user_prompt": (prompt or "").strip(),
+            "summary": package_struct.get("summary") or "",
+            "keywords": package_struct.get("keywords") or [],
+            "art_style": package_struct.get("art_style") or {},
+            "subjects": package_struct.get("subjects") or [],
+            "scenes": package_struct.get("scenes") or [],
+            "storyboard": package_struct.get("storyboard") or [],
+        }
+        content = self._call_glm(REVIEW_PACKAGE_PROMPT, payload_context, temperature=0.3)
+        parsed = self._parse_json_dict(content)
+        return _normalize_review_result(parsed)
+
+    def _refine_package(
+        self,
+        prompt: str,
+        base_struct: dict,
+        user_feedback: str | None,
+        review_feedback: dict | None,
+    ) -> dict:
+        review_feedback = review_feedback or {}
+        base_summary = base_struct.get("summary") or ""
+        base_keywords = base_struct.get("keywords") if isinstance(base_struct.get("keywords"), list) else []
+        base_art_style = base_struct.get("art_style") if isinstance(base_struct.get("art_style"), dict) else {}
+        base_subjects = base_struct.get("subjects") if isinstance(base_struct.get("subjects"), list) else []
+        base_scenes = base_struct.get("scenes") if isinstance(base_struct.get("scenes"), list) else []
+        base_storyboard = base_struct.get("storyboard") if isinstance(base_struct.get("storyboard"), list) else []
+
+        summary, keywords = self._refine_summary(
+            prompt,
+            base_summary,
+            base_keywords,
+            review_feedback.get("summary") or user_feedback,
+        )
+        art_style = self._refine_art_style(
+            prompt,
+            base_art_style,
+            summary,
+            keywords,
+            review_feedback.get("art_style") or user_feedback,
+        )
+        subjects = self._refine_subjects(
+            prompt,
+            base_subjects,
+            summary,
+            keywords,
+            art_style,
+            review_feedback.get("subjects") or user_feedback,
+        )
+        scenes = self._refine_scenes(
+            prompt,
+            base_scenes,
+            summary,
+            keywords,
+            art_style,
+            subjects,
+            review_feedback.get("scenes") or user_feedback,
+        )
+        storyboard = self._refine_storyboard(
+            prompt,
+            base_storyboard,
+            summary,
+            keywords,
+            art_style,
+            scenes,
+            subjects,
+            review_feedback.get("storyboard") or user_feedback,
+        )
+        return {
+            "summary": summary,
+            "keywords": keywords,
+            "art_style": art_style,
+            "subjects": subjects,
+            "scenes": scenes,
+            "storyboard": storyboard,
+        }
+
     def generate_material_package(
         self,
         prompt: str,
@@ -565,34 +996,26 @@ class LLMService:
                 "LLM provider is not configured for material package generation"
             )
             raise RuntimeError("LLM provider not configured")
-
-        system_prompt, temperature = self._build_material_package_prompt(mode)
-        payload_context = {
-            "mode": _normalize_generation_mode(mode),
-            "user_prompt": (prompt or "").strip(),
-            "source_prompt": (prompt or "").strip(),
-            "previous_package": previous_package or {},
-            "feedback": (feedback or "").strip(),
-            "documents": documents or [],
-        }
-        logger.info(
-            "llm.call stage=material_package mode=%s prompt_chars=%s feedback=%s",
-            payload_context["mode"],
-            len(payload_context["user_prompt"]),
-            bool(payload_context["feedback"]),
+        base_struct = self._generate_base_package(
+            prompt,
+            mode,
+            previous_package,
+            feedback,
+            documents,
         )
-        content = self._call_glm(
-            system_prompt, payload_context, temperature=temperature
-        )
-        parsed = self._parse_json_dict(content)
-        normalized = _normalize_material_package_struct(parsed)
-        valid, reason = _validate_material_package_struct(normalized)
-        if not valid:
-            logger.error(
-                "LLM output invalid for material package generation: %s", reason
+        refined_struct = self._refine_package(prompt, base_struct, feedback, None)
+        for attempt in range(MAX_REVIEW_ATTEMPTS):
+            passed, review_feedback = self._review_package(prompt, refined_struct)
+            if passed:
+                return refined_struct
+            logger.info(
+                "llm.review attempt=%s passed=%s",
+                attempt + 1,
+                passed,
             )
-            raise ValueError(f"Invalid LLM output: {reason}")
-        return normalized
+            refined_struct = self._refine_package(prompt, base_struct, feedback, review_feedback)
+        logger.warning("LLM review failed after %s attempts; falling back to base package", MAX_REVIEW_ATTEMPTS)
+        return base_struct
 
     def _mock_output(self, prompt: str) -> dict:
         fallback = (prompt or "").strip() or "Demo content"

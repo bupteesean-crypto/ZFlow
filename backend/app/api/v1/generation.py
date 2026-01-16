@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 import time
 from queue import Empty
 from typing import Any, Dict
@@ -32,14 +33,14 @@ llm_service = LLMService()
 image_service = ImageService()
 logger = logging.getLogger(__name__)
 
-SCENE_QUALITY_CONSTRAINTS = (
+_DEFAULT_SCENE_QUALITY_CONSTRAINTS = (
     "no text, no captions, no logos, no watermark\n"
     "no people, no characters, empty environment\n"
     "avoid low-quality artifacts or distortion\n"
     "avoid malformed anatomy or extra limbs\n"
     "no busy patterns"
 )
-CHARACTER_QUALITY_CONSTRAINTS = (
+_DEFAULT_CHARACTER_QUALITY_CONSTRAINTS = (
     "no text, no captions, no logos, no watermark\n"
     "avoid low-quality artifacts or distortion\n"
     "avoid malformed anatomy or extra limbs\n"
@@ -48,6 +49,25 @@ CHARACTER_QUALITY_CONSTRAINTS = (
     "evenly spaced, same scale and proportions\n"
     "consistent line weight and lighting\n"
     "neutral background"
+)
+_CONSTRAINTS_DIR = (
+    Path(__file__).resolve().parents[3] / "worker" / "prompts" / "image" / "constraints"
+)
+_SCENE_CONSTRAINTS_PATH = _CONSTRAINTS_DIR / "scene_quality.txt"
+_CHARACTER_CONSTRAINTS_PATH = _CONSTRAINTS_DIR / "character_quality.txt"
+
+
+def _load_constraints(path: Path, fallback: str) -> str:
+    try:
+        return path.read_text(encoding="utf-8").strip() or fallback
+    except OSError:
+        logger.warning("Failed to read constraint prompt at %s; using fallback", path)
+        return fallback
+
+
+SCENE_QUALITY_CONSTRAINTS = _load_constraints(_SCENE_CONSTRAINTS_PATH, _DEFAULT_SCENE_QUALITY_CONSTRAINTS)
+CHARACTER_QUALITY_CONSTRAINTS = _load_constraints(
+    _CHARACTER_CONSTRAINTS_PATH, _DEFAULT_CHARACTER_QUALITY_CONSTRAINTS
 )
 
 STEP_PROGRESS = {
@@ -87,6 +107,28 @@ def _update_task(task_id: str, status: str | None = None, progress: int | None =
 
 def _join_keywords(keywords: list[str]) -> str:
     return ", ".join([item for item in keywords if isinstance(item, str) and item.strip()])
+
+
+def _build_style_prompt(art_style: dict) -> str:
+    style_prompt = art_style.get("style_prompt") if isinstance(art_style, dict) else ""
+    style_prompt = style_prompt.strip() if isinstance(style_prompt, str) else ""
+    palette = art_style.get("palette") if isinstance(art_style.get("palette"), list) else []
+    palette = [str(item).strip() for item in palette if str(item).strip()] if isinstance(palette, list) else []
+    if palette:
+        palette_line = f"Palette: {', '.join(palette)}"
+        style_prompt = f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
+    return style_prompt
+
+
+def _compose_image_prompt(base_prompt: str, style_prompt: str, constraints: str) -> str:
+    cleaned = (base_prompt or "").strip()
+    sections = [cleaned] if cleaned else []
+    lower = cleaned.lower()
+    if style_prompt and "style:" not in lower and "风格" not in cleaned:
+        sections.append(f"Style:\n{style_prompt}")
+    if constraints and "constraints:" not in lower and "约束" not in cleaned:
+        sections.append(f"Constraints:\n{constraints}")
+    return "\n\n".join([section for section in sections if section]).strip()
 
 
 def _build_scene_prompt_parts(scene: dict, blueprint: dict) -> dict:
@@ -344,7 +386,15 @@ def _run_generation_task(
         for subject in blueprint.get("subjects", []):
             subject_id = subject.get("id")
             subject_name = subject.get("name")
-            sheet_prompt = _build_character_sheet_prompt(subject, blueprint) or blueprint["summary"]["logline"]
+            base_prompt = subject.get("image_prompt") if isinstance(subject.get("image_prompt"), str) else ""
+            if base_prompt.strip():
+                sheet_prompt = _compose_image_prompt(
+                    base_prompt,
+                    _build_style_prompt(blueprint.get("art_style", {})),
+                    CHARACTER_QUALITY_CONSTRAINTS,
+                )
+            else:
+                sheet_prompt = _build_character_sheet_prompt(subject, blueprint) or blueprint["summary"]["logline"]
             image_result = None
             try:
                 image_result = image_service.generate_image(sheet_prompt, size=image_size)
@@ -383,7 +433,15 @@ def _run_generation_task(
         current_step = "scene_images"
         for scene in blueprint.get("scenes", []):
             scene_id = scene.get("id")
-            scene_prompt = scene.get("prompt_hint") or scene.get("description") or blueprint["summary"]["logline"]
+            base_prompt = scene.get("image_prompt") if isinstance(scene.get("image_prompt"), str) else ""
+            if base_prompt.strip():
+                scene_prompt = _compose_image_prompt(
+                    base_prompt,
+                    _build_style_prompt(blueprint.get("art_style", {})),
+                    SCENE_QUALITY_CONSTRAINTS,
+                )
+            else:
+                scene_prompt = scene.get("prompt_hint") or scene.get("description") or blueprint["summary"]["logline"]
             logger.info("generation stage=image_plan project_id=%s scene_id=%s", project_id, scene_id)
             image_result = None
             try:

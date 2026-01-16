@@ -1,0 +1,8 @@
+no text, no captions, no logos, no watermark
+avoid low-quality artifacts or distortion
+avoid malformed anatomy or extra limbs
+front view, side view, back view in one canvas
+front shows face and torso, side shows profile silhouette, back shows hair and back details
+evenly spaced, same scale and proportions
+consistent line weight and lighting
+neutral background

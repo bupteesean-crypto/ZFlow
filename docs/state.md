@@ -115,6 +115,17 @@ When updating state.md, AI MUST:
 - Moved the LLM system prompt into a reusable prompt asset and added metadata placeholders for future image/video plans.
 - Added a sequential text → image pipeline: derive image_plan from LLM output, call Seedream, and persist image metadata under materials.metadata.images.
 - Updated Seedream integration to use the confirmed API contract (doubao-seedream-4.0, size=2K, configurable API base/model).
+- Added Seedream multi-image storyboard generation with scene/character references plus optional previous frame continuity.
+- Added a storyboard image regeneration flow and a force-regenerate entrypoint from the editor UI.
+- Added Vidu image-to-video generation for storyboard shots and persisted video task metadata in materials.
+- Added Vidu async-result polling in the editor UI and a backend task lookup endpoint to refresh task status and URLs.
+- Editor canvas now plays video clips when available; timeline badges reflect video processing/ready/failed state.
+- Added GitHub raw → jsDelivr CDN URL conversion for image references to improve model fetch reliability.
+- Extracted image quality constraints into prompt files under `worker/prompts/image/constraints` and load them in generation endpoints.
+- Split material package generation into base output + per-section refine prompts with a review pass and retry loop (fallbacks to base on review failure).
+- Added prompt files for summary/art_style/subjects/scenes/storyboard refinement and for package review.
+- Blueprint now preserves LLM-provided `image_prompt` fields for scenes, subjects, and storyboard shots.
+- Added a local `prompt-lab/index.html` tool for prompt tuning against GLM/Seedream/Vidu with localStorage-based keys.
 
 ## Current Capabilities
 
@@ -138,6 +149,11 @@ When updating state.md, AI MUST:
 - Materials page resolves CandidateRow components correctly; space page task mapping is type-safe.
 - End-to-end demo flow is wired to `/api/v1` for login, projects, material packages, and mock generation.
 - Local frontend requests from http://localhost:5173 are allowed via CORS on the backend.
+- Storyboard images can be generated and regenerated via `/api/v1/material-packages/{id}/storyboard-images`.
+- Storyboard videos can be generated via Vidu and queried via `/api/v1/material-packages/{id}/storyboard-videos/{task_id}`.
+- Editor UI polls video tasks and updates processing/ready state for each shot.
+- Image quality constraints are now read from external prompt files for easier tuning.
+- Material package generation now uses base + refine steps with an LLM review loop before persisting the blueprint.
 - Login state now persists across navigation via sessionStorage-backed guard checks.
 - Project deletes now remove related material packages; package creation deactivates previous versions.
 - /api/v1 project and material package updates now reject invalid status/progress/shape values with 400s.
@@ -192,6 +208,8 @@ When updating state.md, AI MUST:
 - Seedream integration is best-effort; image failures are logged and do not block text generation.
 - Seedream response parsing assumes the documented response structure; unexpected shapes fall back to no image.
 - Image generation is limited to a single Seedream image with minimal controls.
+- Video generation depends on externally hosted, publicly accessible image URLs; signed TOS URLs may fail.
+- Video task polling only runs in the editor UI; there is no backend scheduler for async results.
 
 ## Next Confirmed Steps
 
@@ -216,3 +234,6 @@ When updating state.md, AI MUST:
 - Run the landing → materials flow in a live browser to confirm GLM text renders after generation.
 - Validate structured JSON output from GLM in a live browser flow.
 - Confirm scope for a text → image pipeline (image_plan + Seedream integration) before implementation.
+- Decide on a public image rehosting strategy for video generation (OSS/CDN/GitHub).
+- Audit user management, persistence, and project ownership behavior.
+- Improve generation quality controls (prompt tuning, validation, retries) for storyboard consistency.

@@ -77,6 +77,23 @@ def _subject_reference_urls(images: list[dict], subject_id: str) -> list[str]:
 
 
 def _extract_subject_ids(shot: dict, subjects: list[dict]) -> list[str]:
+    if isinstance(shot.get("subject_ids"), list):
+        provided = [str(item).strip() for item in shot.get("subject_ids") if str(item).strip()]
+        if provided:
+            return list(dict.fromkeys(provided))
+    if isinstance(shot.get("subject_names"), list):
+        names = [str(item).strip() for item in shot.get("subject_names") if str(item).strip()]
+        if names:
+            matched = []
+            for subject in subjects:
+                if not isinstance(subject, dict):
+                    continue
+                subject_id = _normalize_text(subject.get("id"))
+                name = _normalize_text(subject.get("name"))
+                if subject_id and name and name in names:
+                    matched.append(subject_id)
+            if matched:
+                return list(dict.fromkeys(matched))
     text_parts = []
     for key in ("description", "prompt_hint", "prompt"):
         value = shot.get(key)

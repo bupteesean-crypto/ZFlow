@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from typing import Any, Dict
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -24,14 +25,14 @@ video_service = VideoService()
 logger = logging.getLogger(__name__)
 
 PACKAGE_STATUSES = {"generating", "completed", "failed"}
-SCENE_QUALITY_CONSTRAINTS = (
+_DEFAULT_SCENE_QUALITY_CONSTRAINTS = (
     "no text, no captions, no logos, no watermark\n"
     "no people, no characters, empty environment\n"
     "avoid low-quality artifacts or distortion\n"
     "avoid malformed anatomy or extra limbs\n"
     "no busy patterns"
 )
-CHARACTER_QUALITY_CONSTRAINTS = (
+_DEFAULT_CHARACTER_QUALITY_CONSTRAINTS = (
     "no text, no captions, no logos, no watermark\n"
     "avoid low-quality artifacts or distortion\n"
     "avoid malformed anatomy or extra limbs\n"
@@ -41,12 +42,35 @@ CHARACTER_QUALITY_CONSTRAINTS = (
     "consistent line weight and lighting\n"
     "neutral background"
 )
-STORYBOARD_QUALITY_CONSTRAINTS = (
+_DEFAULT_STORYBOARD_QUALITY_CONSTRAINTS = (
     "no text, no captions, no logos, no watermark\n"
     "avoid low-quality artifacts or distortion\n"
     "avoid malformed anatomy or extra limbs\n"
     "clear focal subject, cinematic framing\n"
     "consistent style, balanced lighting"
+)
+_CONSTRAINTS_DIR = (
+    Path(__file__).resolve().parents[3] / "worker" / "prompts" / "image" / "constraints"
+)
+_SCENE_CONSTRAINTS_PATH = _CONSTRAINTS_DIR / "scene_quality.txt"
+_CHARACTER_CONSTRAINTS_PATH = _CONSTRAINTS_DIR / "character_quality.txt"
+_STORYBOARD_CONSTRAINTS_PATH = _CONSTRAINTS_DIR / "storyboard_quality.txt"
+
+
+def _load_constraints(path: Path, fallback: str) -> str:
+    try:
+        return path.read_text(encoding="utf-8").strip() or fallback
+    except OSError:
+        logger.warning("Failed to read constraint prompt at %s; using fallback", path)
+        return fallback
+
+
+SCENE_QUALITY_CONSTRAINTS = _load_constraints(_SCENE_CONSTRAINTS_PATH, _DEFAULT_SCENE_QUALITY_CONSTRAINTS)
+CHARACTER_QUALITY_CONSTRAINTS = _load_constraints(
+    _CHARACTER_CONSTRAINTS_PATH, _DEFAULT_CHARACTER_QUALITY_CONSTRAINTS
+)
+STORYBOARD_QUALITY_CONSTRAINTS = _load_constraints(
+    _STORYBOARD_CONSTRAINTS_PATH, _DEFAULT_STORYBOARD_QUALITY_CONSTRAINTS
 )
 STORYBOARD_REFERENCE_IMAGE_LIMIT = 10
 
@@ -122,6 +146,23 @@ def _select_active_video(videos: list[dict]) -> dict | None:
 
 
 def _extract_subject_ids(shot: dict, subjects: list[dict]) -> list[str]:
+    if isinstance(shot.get("subject_ids"), list):
+        provided = [str(item).strip() for item in shot.get("subject_ids") if str(item).strip()]
+        if provided:
+            return list(dict.fromkeys(provided))
+    if isinstance(shot.get("subject_names"), list):
+        names = [str(item).strip() for item in shot.get("subject_names") if str(item).strip()]
+        if names:
+            matched = []
+            for subject in subjects:
+                if not isinstance(subject, dict):
+                    continue
+                subject_id = _normalize_text(subject.get("id"))
+                name = _normalize_text(subject.get("name"))
+                if subject_id and name and name in names:
+                    matched.append(subject_id)
+            if matched:
+                return list(dict.fromkeys(matched))
     text_parts = []
     for key in ("description", "prompt_hint", "prompt"):
         value = shot.get(key)
@@ -188,6 +229,28 @@ def _extract_source_prompt(materials: dict) -> str:
 
 def _join_keywords(items: list[str]) -> str:
     return ", ".join([item for item in items if isinstance(item, str) and item.strip()])
+
+
+def _build_style_prompt(art_style: dict) -> str:
+    style_prompt = art_style.get("style_prompt") if isinstance(art_style, dict) else ""
+    style_prompt = style_prompt.strip() if isinstance(style_prompt, str) else ""
+    palette = art_style.get("palette") if isinstance(art_style.get("palette"), list) else []
+    palette = [str(item).strip() for item in palette if str(item).strip()] if isinstance(palette, list) else []
+    if palette:
+        palette_line = f"Palette: {', '.join(palette)}"
+        style_prompt = f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
+    return style_prompt
+
+
+def _compose_image_prompt(base_prompt: str, style_prompt: str, constraints: str) -> str:
+    cleaned = (base_prompt or "").strip()
+    sections = [cleaned] if cleaned else []
+    lower = cleaned.lower()
+    if style_prompt and "style:" not in lower and "风格" not in cleaned:
+        sections.append(f"Style:\n{style_prompt}")
+    if constraints and "constraints:" not in lower and "约束" not in cleaned:
+        sections.append(f"Constraints:\n{constraints}")
+    return "\n\n".join([section for section in sections if section]).strip()
 
 
 def _build_character_prompt_parts(subject: dict, blueprint: dict, sheet_prompt: str) -> dict:
@@ -464,8 +527,18 @@ async def generate_storyboard_images(
 
         scene_id = shot.get("scene_id") if isinstance(shot.get("scene_id"), str) else ""
         scene = scene_by_id.get(scene_id, {}) if scene_id else {}
-        prompt_parts = _build_storyboard_prompt_parts(shot, scene, blueprint)
-        prompt = _render_storyboard_prompt(prompt_parts)
+        style_prompt = _build_style_prompt(blueprint.get("art_style", {}))
+        shot_prompt = shot.get("image_prompt") if isinstance(shot.get("image_prompt"), str) else ""
+        if shot_prompt.strip():
+            prompt_parts = {
+                "content": shot_prompt.strip(),
+                "style": style_prompt,
+                "constraints": STORYBOARD_QUALITY_CONSTRAINTS,
+            }
+            prompt = _compose_image_prompt(shot_prompt, style_prompt, STORYBOARD_QUALITY_CONSTRAINTS)
+        else:
+            prompt_parts = _build_storyboard_prompt_parts(shot, scene, blueprint)
+            prompt = _render_storyboard_prompt(prompt_parts)
         ref_images = []
         scene_url = _scene_reference_url(images, scene_id)
         if scene_url:
@@ -628,6 +701,13 @@ async def generate_storyboard_videos(
         scene = scene_by_id.get(scene_id, {}) if scene_id else {}
         prompt_parts = _build_storyboard_prompt_parts(shot, scene, blueprint)
         base_prompt = _render_storyboard_prompt(prompt_parts)
+        shot_prompt = shot.get("image_prompt") if isinstance(shot.get("image_prompt"), str) else ""
+        if shot_prompt.strip():
+            base_prompt = _compose_image_prompt(
+                shot_prompt,
+                _build_style_prompt(blueprint.get("art_style", {})),
+                STORYBOARD_QUALITY_CONSTRAINTS,
+            )
         prompt = (prompt_override or base_prompt or "").strip()
         prompt_source = "storyboard_video_autogen"
 
@@ -819,9 +899,15 @@ async def regenerate_from_feedback(
         for subject in blueprint.get("subjects", []):
             subject_id = subject.get("id")
             subject_name = subject.get("name")
-            sheet_prompt = _build_character_sheet_prompt(subject, blueprint)
-            if not sheet_prompt:
-                sheet_prompt = blueprint["summary"]["logline"]
+            base_prompt = subject.get("image_prompt") if isinstance(subject.get("image_prompt"), str) else ""
+            if base_prompt.strip():
+                sheet_prompt = _compose_image_prompt(
+                    base_prompt,
+                    _build_style_prompt(blueprint.get("art_style", {})),
+                    CHARACTER_QUALITY_CONSTRAINTS,
+                )
+            else:
+                sheet_prompt = _build_character_sheet_prompt(subject, blueprint) or blueprint["summary"]["logline"]
             image_result = None
             try:
                 image_result = image_service.generate_image(sheet_prompt, size=image_size)
@@ -857,7 +943,15 @@ async def regenerate_from_feedback(
         current_step = "scene_images"
         for scene in blueprint.get("scenes", []):
             scene_id = scene.get("id")
-            scene_prompt = scene.get("prompt_hint") or scene.get("description") or blueprint["summary"]["logline"]
+            base_prompt = scene.get("image_prompt") if isinstance(scene.get("image_prompt"), str) else ""
+            if base_prompt.strip():
+                scene_prompt = _compose_image_prompt(
+                    base_prompt,
+                    _build_style_prompt(blueprint.get("art_style", {})),
+                    SCENE_QUALITY_CONSTRAINTS,
+                )
+            else:
+                scene_prompt = scene.get("prompt_hint") or scene.get("description") or blueprint["summary"]["logline"]
             image_result = None
             try:
                 image_result = image_service.generate_image(scene_prompt, size=image_size)

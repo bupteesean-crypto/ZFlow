@@ -110,6 +110,7 @@ def build_blueprint(llm_struct: dict, source_prompt: str) -> dict:
         description = _normalize_text(scene.get("description"), synopsis)
         mood = _normalize_text(scene.get("mood"), keywords[0] if keywords else "neutral")
         purpose = _normalize_text(scene.get("purpose"), "")
+        image_prompt = _normalize_text(scene.get("image_prompt"), "")
         prompt_hint = _render_template(
             scene_template,
             {
@@ -119,6 +120,8 @@ def build_blueprint(llm_struct: dict, source_prompt: str) -> dict:
                 "style": style_prompt,
             },
         )
+        if image_prompt:
+            prompt_hint = image_prompt
         scenes.append(
             {
                 "id": f"scene_{idx}",
@@ -126,6 +129,7 @@ def build_blueprint(llm_struct: dict, source_prompt: str) -> dict:
                 "description": description,
                 "mood": mood,
                 "purpose": purpose,
+                "image_prompt": image_prompt or prompt_hint,
                 "prompt_hint": prompt_hint,
             }
         )
@@ -137,6 +141,7 @@ def build_blueprint(llm_struct: dict, source_prompt: str) -> dict:
         name = _normalize_text(subject.get("name"), f"Character {idx}")
         description = _normalize_text(subject.get("description"), "")
         traits = subject.get("visual_traits") if isinstance(subject.get("visual_traits"), list) else []
+        image_prompt = _normalize_text(subject.get("image_prompt"), "")
         prompt_hint = f"{name}. {description}".strip()
         views = ["front", "side", "back"]
         view_prompts = {}
@@ -161,6 +166,7 @@ def build_blueprint(llm_struct: dict, source_prompt: str) -> dict:
                 "views": views,
                 "view_prompts": view_prompts,
                 "prompt_hint": prompt_hint,
+                "image_prompt": image_prompt or prompt_hint,
             }
         )
 
@@ -168,6 +174,11 @@ def build_blueprint(llm_struct: dict, source_prompt: str) -> dict:
     storyboard = []
     for idx, shot in enumerate(storyboard_raw, start=1):
         description = _normalize_text(shot.get("description"), "")
+        image_prompt = _normalize_text(shot.get("image_prompt"), "")
+        subject_names = shot.get("subject_names") if isinstance(shot.get("subject_names"), list) else []
+        subject_names = [str(item).strip() for item in subject_names if str(item).strip()]
+        subject_ids = shot.get("subject_ids") if isinstance(shot.get("subject_ids"), list) else []
+        subject_ids = [str(item).strip() for item in subject_ids if str(item).strip()]
         storyboard.append(
             {
                 "id": f"shot_{idx}",
@@ -177,6 +188,9 @@ def build_blueprint(llm_struct: dict, source_prompt: str) -> dict:
                 "duration_sec": shot.get("duration_sec", 3),
                 "camera": _normalize_text(shot.get("camera"), ""),
                 "prompt_hint": description,
+                "image_prompt": image_prompt or description,
+                "subject_names": subject_names,
+                "subject_ids": subject_ids,
             }
         )
 
