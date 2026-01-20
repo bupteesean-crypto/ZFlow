@@ -80,16 +80,21 @@
           </button>
         </div>
         <div class="model-selector-list">
-          <button
-            v-for="model in currentModels"
-            :key="model.id"
-            :class="['model-selector-item', { active: selectedModel === model.id }]"
-            @click="selectedModel = model.id"
-          >
-            <span>{{ model.name }}</span>
-            <span class="model-tag">{{ model.tag }}</span>
-          </button>
-        </div>
+            <button
+              v-for="model in currentModels"
+              :key="model.id"
+              :class="[
+                'model-selector-item',
+                { active: currentSelectedModel === model.id, disabled: !model.enabled },
+              ]"
+              :disabled="!model.enabled"
+              @click="selectModel(model)"
+            >
+              <span>{{ model.label }}</span>
+              <span class="model-tag">{{ model.enabled ? '可用' : '未启用' }}</span>
+            </button>
+            <div v-if="currentModels.length === 0" class="model-empty">暂无可选模型</div>
+          </div>
         <div class="model-selector-actions">
           <button class="btn-ghost" @click="showModelSelector = false">取消</button>
           <button class="btn-primary" @click="showModelSelector = false">确定</button>
@@ -141,6 +146,7 @@ import { useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast';
 import { createProject } from '@/api/projects';
 import { startGeneration } from '@/api/generation';
+import { fetchModels, type ModelOption } from '@/api/models';
 
 interface TodoItem {
   title: string;
@@ -167,32 +173,27 @@ const mode = ref<'general' | 'pro'>('general');
 const canUseImage = ref(true);
 const generating = ref(false);
 const showModelSelector = ref(false);
-const activeModelTab = ref('video');
-const selectedModel = ref('default');
+const activeModelTab = ref<'video' | 'image'>('image');
+const imageModels = ref<ModelOption[]>([]);
+const videoModels = ref<ModelOption[]>([]);
+const selectedModels = ref<{ image: string; video: string }>({ image: '', video: '' });
 
 const modelTabs = [
   { id: 'video', name: '视频生成' },
   { id: 'image', name: '图像生成' },
-  { id: 'audio', name: '音频生成' },
 ];
 
-const models = {
-  video: [
-    { id: 'default', name: '默认模型', tag: '推荐' },
-    { id: 'fast', name: '快速生成', tag: '2x速度' },
-    { id: 'quality', name: '高质量', tag: 'Pro' },
-  ],
-  image: [
-    { id: 'default', name: '默认模型', tag: '推荐' },
-    { id: 'realistic', name: '写实风格', tag: '新增' },
-  ],
-  audio: [
-    { id: 'default', name: '默认音色', tag: '推荐' },
-    { id: 'voice1', name: '温柔女声', tag: '' },
-  ],
-};
+const currentModels = computed(() => {
+  if (activeModelTab.value === 'video') return videoModels.value;
+  if (activeModelTab.value === 'image') return imageModels.value;
+  return [];
+});
 
-const currentModels = computed(() => models[activeModelTab.value as keyof typeof models]);
+const currentSelectedModel = computed(() => {
+  if (activeModelTab.value === 'video') return selectedModels.value.video;
+  if (activeModelTab.value === 'image') return selectedModels.value.image;
+  return '';
+});
 
 const inspirationCards: InspirationCard[] = [
   {
@@ -263,6 +264,36 @@ const handleInput = () => {
   }
 };
 
+const pickDefaultModel = (items: ModelOption[]) => {
+  const storedImage = sessionStorage.getItem('selectedImageModelId') || '';
+  const storedVideo = sessionStorage.getItem('selectedVideoModelId') || '';
+  if (items.length === 0) return;
+  const defaults = items.find(item => item.is_default && item.enabled) || items.find(item => item.enabled);
+  if (!defaults) return;
+  if (items[0].type === 'image') {
+    const next = items.find(item => item.id === storedImage && item.enabled)?.id || defaults.id;
+    selectedModels.value.image = next;
+    sessionStorage.setItem('selectedImageModelId', next);
+  }
+  if (items[0].type === 'video') {
+    const next = items.find(item => item.id === storedVideo && item.enabled)?.id || defaults.id;
+    selectedModels.value.video = next;
+    sessionStorage.setItem('selectedVideoModelId', next);
+  }
+};
+
+const selectModel = (model: ModelOption) => {
+  if (!model.enabled) return;
+  if (model.type === 'image') {
+    selectedModels.value.image = model.id;
+    sessionStorage.setItem('selectedImageModelId', model.id);
+  }
+  if (model.type === 'video') {
+    selectedModels.value.video = model.id;
+    sessionStorage.setItem('selectedVideoModelId', model.id);
+  }
+};
+
 const handleSubmit = async () => {
   if (!prompt.value.trim()) {
     showToast('请输入创作描述', 'warning');
@@ -283,7 +314,7 @@ const handleSubmit = async () => {
     sessionStorage.setItem('streamPrompt', prompt.value);
     sessionStorage.setItem('streamStartedAt', String(Date.now()));
 
-    await startGeneration(project.id, prompt.value, mode.value);
+    await startGeneration(project.id, prompt.value, mode.value, selectedModels.value.image || undefined);
     generating.value = false;
     router.push('/materials');
   } catch (err) {
@@ -332,6 +363,22 @@ const handleScroll = () => {
 onMounted(() => {
   updateShrinkState();
   window.addEventListener('scroll', handleScroll, { passive: true });
+  fetchModels('image')
+    .then(items => {
+      imageModels.value = items;
+      pickDefaultModel(items);
+    })
+    .catch(() => {
+      imageModels.value = [];
+    });
+  fetchModels('video')
+    .then(items => {
+      videoModels.value = items;
+      pickDefaultModel(items);
+    })
+    .catch(() => {
+      videoModels.value = [];
+    });
 });
 
 onUnmounted(() => {
@@ -689,12 +736,23 @@ onUnmounted(() => {
   background: rgba(103, 80, 164, 0.12);
 }
 
+.model-selector-item.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .model-tag {
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 6px;
   background: rgba(103, 80, 164, 0.12);
   color: var(--md-primary);
+}
+
+.model-empty {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  padding: 8px;
 }
 
 .model-selector-actions {

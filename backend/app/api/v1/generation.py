@@ -24,8 +24,10 @@ from app.services.generation_events import (
     subscribe_generation_events,
     unsubscribe_generation_events,
 )
+from app.services.generation_todo import TODO_LIST
 from app.services.image_service import ImageService
 from app.services.llm_service import LLMService
+from app.services.model_registry import select_enabled_model
 from app.store import GENERATION_TASKS, GENERATION_TRACES, new_id, utc_now
 
 router = APIRouter(prefix="/generation", tags=["generation"])
@@ -51,7 +53,7 @@ _DEFAULT_CHARACTER_QUALITY_CONSTRAINTS = (
     "neutral background"
 )
 _CONSTRAINTS_DIR = (
-    Path(__file__).resolve().parents[3] / "worker" / "prompts" / "image" / "constraints"
+    Path(__file__).resolve().parents[4] / "worker" / "prompts" / "image" / "constraints"
 )
 _SCENE_CONSTRAINTS_PATH = _CONSTRAINTS_DIR / "scene_quality.txt"
 _CHARACTER_CONSTRAINTS_PATH = _CONSTRAINTS_DIR / "character_quality.txt"
@@ -71,26 +73,47 @@ CHARACTER_QUALITY_CONSTRAINTS = _load_constraints(
 )
 
 STEP_PROGRESS = {
-    "outline": 10,
-    "art_style": 20,
-    "characters": 30,
-    "character_images": 45,
-    "scenes": 60,
-    "scene_images": 80,
+    "summary": 20,
+    "art_style": 40,
+    "characters": 60,
+    "scenes": 80,
     "storyboard": 90,
     "done": 100,
 }
 
 
-def _emit_step(project_id: str, step: str, status: str, message: str) -> None:
+def _emit_assistant_message(project_id: str, content: str) -> None:
     publish_generation_event(
         project_id,
-        {
-            "type": "generation.step",
-            "step": step,
-            "status": status,
-            "message": message,
-        },
+        {"type": "assistant_message", "content": content},
+    )
+
+
+def _emit_todo_list(project_id: str) -> None:
+    publish_generation_event(
+        project_id,
+        {"type": "todo_list", "items": TODO_LIST},
+    )
+
+
+def _emit_todo_update(project_id: str, item_id: str, status: str) -> None:
+    publish_generation_event(
+        project_id,
+        {"type": "todo_update", "id": item_id, "status": status},
+    )
+
+
+def _emit_content_update(project_id: str, section: str, data: object) -> None:
+    publish_generation_event(
+        project_id,
+        {"type": "content_update", "section": section, "data": data},
+    )
+
+
+def _emit_done(project_id: str, package_id: str | None) -> None:
+    publish_generation_event(
+        project_id,
+        {"type": "done", "package_id": package_id},
     )
 
 
@@ -338,13 +361,16 @@ def _run_generation_task(
     documents: list,
     task_id: str,
     trace_id: str,
+    image_model_id: str | None,
+    image_model: str | None,
 ) -> None:
     db = SessionLocal()
-    current_step = "outline"
+    current_step = "summary"
     error_sent = False
     reset_generation_events(project_id)
     _update_task(task_id, status="running", progress=0)
-    _emit_step(project_id, "outline", "started", "正在理解你的创作意图…")
+    _emit_assistant_message(project_id, "我将按以下步骤为你生成素材包，请稍等")
+    _emit_todo_list(project_id)
     emit_event(
         "generation.progressed",
         {
@@ -356,32 +382,76 @@ def _run_generation_task(
         trace_id=trace_id,
     )
     try:
-        started_at = time.perf_counter()
-        llm_result = llm_service.generate_material_package(str(llm_input), mode, documents=documents)
-        duration_ms = int((time.perf_counter() - started_at) * 1000)
-        logger.info(
-            "generation stage=llm project_id=%s mode=%s duration_ms=%s",
-            project_id,
+        summary, keywords = llm_service.generate_summary(
+            llm_input,
             mode,
-            duration_ms,
+            documents=documents,
         )
+        _emit_todo_update(project_id, "summary", "done")
+        _emit_content_update(project_id, "summary", summary)
+        _update_task(task_id, progress=STEP_PROGRESS["summary"])
 
-        llm_payload = llm_result if isinstance(llm_result, dict) else {}
-        blueprint = build_blueprint(llm_payload, source_prompt=llm_input)
-
-        _emit_step(project_id, "outline", "completed", "故事梗概已完成")
-        current_step = "outline"
-        _update_task(task_id, progress=STEP_PROGRESS["outline"])
-        _emit_step(project_id, "art_style", "completed", "美术风格已确定")
         current_step = "art_style"
+        art_style = llm_service.generate_art_style(
+            summary,
+            llm_input,
+            mode,
+        )
+        _emit_todo_update(project_id, "art_style", "done")
+        _emit_content_update(project_id, "art_style", art_style)
         _update_task(task_id, progress=STEP_PROGRESS["art_style"])
-        image_size = settings.seedream_default_size or "960x1280"
-        _emit_step(project_id, "characters", "completed", "角色设定已完成")
+
+        current_step = "package_name"
+        package_name = llm_service.generate_package_name(summary, art_style)
+        _emit_content_update(project_id, "package_name", package_name)
+
         current_step = "characters"
+        subjects = llm_service.generate_characters(
+            summary,
+            art_style,
+            llm_input,
+            mode,
+        )
+        _emit_todo_update(project_id, "characters", "done")
+        _emit_content_update(project_id, "characters", subjects)
         _update_task(task_id, progress=STEP_PROGRESS["characters"])
 
-        _emit_step(project_id, "character_images", "started", "正在生成角色三视图…")
-        current_step = "character_images"
+        current_step = "scenes"
+        scenes = llm_service.generate_scenes(
+            summary,
+            art_style,
+            subjects,
+            llm_input,
+            mode,
+        )
+        _emit_todo_update(project_id, "scenes", "done")
+        _emit_content_update(project_id, "scenes", scenes)
+        _update_task(task_id, progress=STEP_PROGRESS["scenes"])
+
+        current_step = "storyboard"
+        storyboard = llm_service.generate_storyboard(
+            summary,
+            art_style,
+            subjects,
+            scenes,
+            llm_input,
+            mode,
+        )
+        _emit_todo_update(project_id, "storyboard", "done")
+        _emit_content_update(project_id, "storyboard", storyboard)
+        _update_task(task_id, progress=STEP_PROGRESS["storyboard"])
+
+        llm_payload = {
+            "summary": summary,
+            "keywords": keywords,
+            "art_style": art_style,
+            "subjects": subjects,
+            "scenes": scenes,
+            "storyboard": storyboard,
+        }
+        blueprint = build_blueprint(llm_payload, source_prompt=llm_input)
+
+        image_size = settings.seedream_default_size or "960x1280"
         images: list[dict] = []
         for subject in blueprint.get("subjects", []):
             subject_id = subject.get("id")
@@ -397,7 +467,7 @@ def _run_generation_task(
                 sheet_prompt = _build_character_sheet_prompt(subject, blueprint) or blueprint["summary"]["logline"]
             image_result = None
             try:
-                image_result = image_service.generate_image(sheet_prompt, size=image_size)
+                image_result = image_service.generate_image(sheet_prompt, size=image_size, model=image_model)
             except Exception:
                 logger.exception(
                     "generation stage=character_sheet failed project_id=%s subject_id=%s",
@@ -418,19 +488,11 @@ def _run_generation_task(
                     "prompt_parts": prompt_parts,
                     "provider": image_result.get("provider"),
                     "model": image_result.get("model"),
+                    "model_id": image_model_id,
                     "size": image_result.get("size"),
                 }
             )
-        _emit_step(project_id, "character_images", "completed", "角色三视图已生成")
-        current_step = "character_images"
-        _update_task(task_id, progress=STEP_PROGRESS["character_images"])
 
-        _emit_step(project_id, "scenes", "completed", "场景设定已完成")
-        current_step = "scenes"
-        _update_task(task_id, progress=STEP_PROGRESS["scenes"])
-
-        _emit_step(project_id, "scene_images", "started", "正在生成场景空间图…")
-        current_step = "scene_images"
         for scene in blueprint.get("scenes", []):
             scene_id = scene.get("id")
             base_prompt = scene.get("image_prompt") if isinstance(scene.get("image_prompt"), str) else ""
@@ -446,7 +508,7 @@ def _run_generation_task(
             image_result = None
             try:
                 image_started_at = time.perf_counter()
-                image_result = image_service.generate_image(scene_prompt, size=image_size)
+                image_result = image_service.generate_image(scene_prompt, size=image_size, model=image_model)
                 image_duration_ms = int((time.perf_counter() - image_started_at) * 1000)
                 logger.info(
                     "generation stage=image_gen project_id=%s scene_id=%s duration_ms=%s request_id=%s",
@@ -473,24 +535,13 @@ def _run_generation_task(
                         "prompt_parts": prompt_parts,
                         "provider": image_result.get("provider"),
                         "model": image_result.get("model"),
+                        "model_id": image_model_id,
                         "size": image_result.get("size"),
                     }
                 )
 
-        _emit_step(project_id, "scene_images", "completed", "场景空间图已生成")
-        current_step = "scene_images"
-        _update_task(task_id, progress=STEP_PROGRESS["scene_images"])
-
-        _emit_step(project_id, "storyboard", "completed", "分镜剧本已完成")
-        current_step = "storyboard"
-        _update_task(task_id, progress=STEP_PROGRESS["storyboard"])
-
         packages = package_repo.list_packages_for_project(db, project_id)
         package_version = _next_package_version(packages)
-        package_name = llm_service.generate_package_name(
-            str(llm_input),
-            blueprint["summary"]["logline"],
-        )
 
         first_scene = blueprint["scenes"][0] if blueprint.get("scenes") else {}
         image_plan = {
@@ -521,6 +572,7 @@ def _run_generation_task(
                     "user_prompt": llm_input,
                     "user_feedback": None,
                     "generation_mode": mode,
+                    "image_model_id": image_model_id,
                 },
                 "art_style": {
                     "style_name": blueprint.get("art_style", {}).get("style_name", ""),
@@ -545,7 +597,7 @@ def _run_generation_task(
         task = GENERATION_TASKS.get(task_id)
         if task is not None:
             task["material_package_id"] = package["id"]
-        _emit_step(project_id, "done", "completed", "素材包已生成")
+        _emit_done(project_id, package["id"])
         current_step = "done"
         _update_task(task_id, status="completed", progress=STEP_PROGRESS["done"])
         emit_event(
@@ -600,11 +652,7 @@ async def stream_generation(project_id: str) -> StreamingResponse:
                 yield format_sse(payload)
                 if payload.get("type") == "generation.error":
                     break
-                if (
-                    payload.get("type") == "generation.step"
-                    and payload.get("step") == "done"
-                    and payload.get("status") == "completed"
-                ):
+                if payload.get("type") == "done":
                     break
         finally:
             unsubscribe_generation_events(project_id, queue)
@@ -649,6 +697,17 @@ async def start_generation(
         mode = "general"
     documents = payload.get("documents")
     documents = documents if isinstance(documents, list) else []
+    image_model_id = payload.get("image_model_id")
+    if image_model_id is not None and not isinstance(image_model_id, str):
+        raise HTTPException(status_code=400, detail="image_model_id must be a string")
+    image_model_id = image_model_id.strip() if isinstance(image_model_id, str) and image_model_id.strip() else None
+    image_model = None
+    if image_model_id:
+        try:
+            model_spec = select_enabled_model(image_model_id, "image")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="image_model_id not available")
+        image_model = model_spec.model if model_spec else None
     task_id = new_id()
     trace_id = new_trace_id()
     task = {
@@ -679,6 +738,8 @@ async def start_generation(
         documents,
         task_id,
         trace_id,
+        image_model_id,
+        image_model,
     )
     return ok(task)
 

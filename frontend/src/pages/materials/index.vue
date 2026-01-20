@@ -16,10 +16,16 @@
             </div>
             <div v-else class="bubble system">
               <div class="assistant-title">
-                <span :class="['status-icon', message.status || 'completed']"></span>
+                <span v-if="message.kind !== 'todo'" :class="['status-icon', message.status || 'completed']"></span>
                 <span>系统进度</span>
               </div>
-              <div class="text-sm leading-relaxed">{{ message.text }}</div>
+              <div v-if="message.kind === 'todo'" class="todo-list">
+                <div v-for="item in message.todoItems || []" :key="item.id" class="todo-item">
+                  <span :class="['todo-status', item.status]"></span>
+                  <span>{{ item.label }}</span>
+                </div>
+              </div>
+              <div v-else class="text-sm leading-relaxed">{{ message.text }}</div>
               <div v-if="message.step === 'done'" class="assistant-foot">内容已更新到右侧策划文档。</div>
               <button
                 v-if="message.status === 'error'"
@@ -38,7 +44,14 @@
             placeholder="对当前素材包的修改意见，例如：更温暖的色调 / 场景更细腻"
             @keydown="handleChatKeydown"
           />
-          <button @click="sendChat">发送</button>
+          <div class="chat-actions">
+            <select v-model="selectedImageModelId" class="model-select" :disabled="isStreaming">
+              <option v-for="model in imageModels" :key="model.id" :value="model.id" :disabled="!model.enabled">
+                {{ model.label }}{{ model.enabled ? '' : '（未启用）' }}
+              </option>
+            </select>
+            <button @click="sendChat">发送</button>
+          </div>
         </div>
       </div>
 
@@ -55,7 +68,7 @@
           </select>
           <button class="save-btn" @click="savePackage">存档当前素材包</button>
         </div>
-        <div class="workspace" v-if="currentPackage">
+        <div class="workspace" v-if="hasWorkspace">
           <!-- Version List -->
           <div v-if="sortedPackages.length > 1" class="version-list">
             <div
@@ -72,25 +85,27 @@
             </div>
           </div>
 
+          <div v-if="streamPackageName" class="stream-title">素材包名称：{{ streamPackageName }}</div>
+
           <!-- Story Summary Section -->
-          <section class="section" @click="selectObject('summary', '故事摘要', currentPackage.storySummary)">
+          <section class="section" @click="selectObject('summary', '故事摘要', displaySummary)">
             <h3>故事摘要</h3>
-            <div class="asset-preview">{{ currentPackage.storySummary || '生成中…' }}</div>
+            <div class="asset-preview">{{ displaySummary || '生成中…' }}</div>
           </section>
 
           <!-- Art Style Section -->
           <section
             :class="['section', { selected: selectedTextTarget?.type === 'art_style' }]"
-            @click="selectTextTarget({ type: 'art_style' }, '美术风格', buildArtStyleContent(currentPackage.artStyle))"
+            @click="selectTextTarget({ type: 'art_style' }, '美术风格', buildArtStyleContent(displayArtStyle))"
           >
             <h3>美术风格</h3>
             <div class="asset-preview">
-              <div class="detail-row">风格：{{ currentPackage.artStyle.styleName || '生成中…' }}</div>
-              <div class="detail-row" v-if="currentPackage.artStyle.palette.length">
-                调色盘：{{ currentPackage.artStyle.palette.join(' / ') }}
+              <div class="detail-row">风格：{{ displayArtStyle.styleName || '生成中…' }}</div>
+              <div class="detail-row" v-if="displayArtStyle.palette.length">
+                调色盘：{{ displayArtStyle.palette.join(' / ') }}
               </div>
-              <div class="detail-row" v-if="currentPackage.artStyle.stylePrompt">
-                提示词：{{ currentPackage.artStyle.stylePrompt }}
+              <div class="detail-row" v-if="displayArtStyle.stylePrompt">
+                提示词：{{ displayArtStyle.stylePrompt }}
               </div>
             </div>
           </section>
@@ -98,9 +113,11 @@
           <!-- Subjects Section -->
           <section class="section">
             <h3>角色列表</h3>
-            <div v-if="currentPackage.subjects.length === 0" class="empty-text">暂无角色</div>
+            <div v-if="displaySubjects.length === 0" class="empty-text">
+              {{ isStreaming ? '生成中…' : '暂无角色' }}
+            </div>
             <div
-              v-for="subject in currentPackage.subjects"
+              v-for="subject in displaySubjects"
               :key="subject.id || subject.name"
               :class="['detail-card', { selected: isSubjectSelected(subject) }]"
               @click="selectObject('subject', `角色 · ${subject.name}`, buildSubjectContent(subject), undefined, 'text')"
@@ -119,6 +136,7 @@
                 >
                   <img :src="img.url" :alt="img.prompt || 'Character view'" class="thumb-image" />
                   <div v-if="img.isActive" class="thumb-active">✅</div>
+                  <button class="thumb-preview-btn" @click.stop="openImagePreview(img)">查看大图</button>
                   <div class="thumb-meta">{{ formatImageLabel(img) }}</div>
                 </div>
                 <div v-if="isLoadingSubject(subject)" class="thumb-card loading-card">
@@ -132,8 +150,10 @@
           <!-- Scenes Section -->
           <section class="section">
             <h3>场景列表</h3>
-            <div v-if="currentPackage.scenes.length === 0" class="empty-text">暂无场景</div>
-            <div v-for="scene in currentPackage.scenes" :key="scene.id || scene.name" class="detail-card">
+            <div v-if="displayScenes.length === 0" class="empty-text">
+              {{ isStreaming ? '生成中…' : '暂无场景' }}
+            </div>
+            <div v-for="scene in displayScenes" :key="scene.id || scene.name" class="detail-card">
               <div class="detail-title">{{ scene.name || '场景' }}</div>
               <div class="detail-row">情绪：{{ scene.mood || '未指定' }}</div>
               <div class="detail-row">描述：{{ scene.description || '暂无描述' }}</div>
@@ -147,6 +167,7 @@
                 >
                   <img :src="img.url" :alt="img.prompt || 'Scene'" class="thumb-image" />
                   <div v-if="img.isActive" class="thumb-active">✅</div>
+                  <button class="thumb-preview-btn" @click.stop="openImagePreview(img)">查看大图</button>
                   <div class="thumb-meta">{{ formatImageLabel(img) }}</div>
                 </div>
                 <div v-if="isLoadingScene(scene)" class="thumb-card loading-card">
@@ -160,10 +181,12 @@
           <!-- Storyboard Section -->
           <section class="section">
             <h3>分镜剧本</h3>
-            <div v-if="currentPackage.storyboard.length === 0" class="empty-text">暂无分镜</div>
+            <div v-if="displayStoryboard.length === 0" class="empty-text">
+              {{ isStreaming ? '生成中…' : '暂无分镜' }}
+            </div>
             <ol v-else class="storyboard-list">
               <li
-                v-for="shot in currentPackage.storyboard"
+                v-for="shot in displayStoryboard"
                 :key="shot.id || shot.shotNumber"
                 :class="['storyboard-item', { selected: selectedTextTarget?.type === 'storyboard_description' && selectedTextTarget?.shotId === shot.id }]"
                 @click="selectTextTarget({ type: 'storyboard_description', shotId: shot.id }, `分镜 · ${shot.shotNumber}`, shot.description)"
@@ -178,13 +201,14 @@
           </section>
 
           <ImageSection
-            v-if="currentPackage.unassignedImages.length"
-            :images="currentPackage.unassignedImages"
+            v-if="currentPackage && currentPackage.unassignedImages.length"
+            :images="currentPackage ? currentPackage.unassignedImages : []"
             :selected-image-id="selectedImageId"
             :loading-group-key="regeneratingGroupKey"
             :is-loading="isRegenerating"
             :show-loading-placeholder="showUnassignedPlaceholder"
             @select="(img) => handleImageClick(img, '未归类图片')"
+            @preview="openImagePreview"
           />
         </div>
         <div v-else class="text-sm text-slate-400">暂无素材包，请在左侧发起生成。</div>
@@ -235,6 +259,12 @@
                 </button>
               </div>
               <div class="size-hint">默认 3:4，修改后用于后续图片生成。</div>
+              <div class="field-label mt-2">图片模型</div>
+              <select v-model="selectedImageModelId" class="model-select" :disabled="isImageBusy">
+                <option v-for="model in imageModels" :key="model.id" :value="model.id" :disabled="!model.enabled">
+                  {{ model.label }}{{ model.enabled ? '' : '（未启用）' }}
+                </option>
+              </select>
               <button class="main-action mt-2" :disabled="isImageBusy" @click="handleRegenerate">
                 保存并重新生成
               </button>
@@ -313,6 +343,18 @@
         </div>
       </div>
     </div>
+
+    <div v-if="previewImage" class="image-preview-mask" @click.self="closeImagePreview">
+      <div class="image-preview-card">
+        <button class="preview-close" @click="closeImagePreview">×</button>
+        <img :src="previewImage.url" :alt="previewImage.prompt || '预览图片'" />
+        <div class="preview-meta">
+          <div class="preview-title">{{ formatImageLabel(previewImage) }}</div>
+          <div class="preview-sub">来源：{{ formatPromptSource(previewImage.promptSource) }}</div>
+          <div class="preview-prompt">{{ previewImage.prompt || '暂无提示词' }}</div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -329,6 +371,7 @@ import {
   updateMaterialPackage,
   type MaterialPackage,
 } from '@/api/material-packages';
+import { fetchModels, type ModelOption } from '@/api/models';
 import { startGeneration } from '@/api/generation';
 import { adoptImage, regenerateImage, rewriteImagePrompt } from '@/api/images';
 import { adoptTextCandidate, submitArtStyleFeedback, submitStoryboardFeedback } from '@/api/text';
@@ -341,6 +384,7 @@ interface GeneratedImage {
   promptSource?: string;
   provider?: string;
   model?: string;
+  modelId?: string;
   size?: string;
   type?: string;
   sceneId?: string;
@@ -409,6 +453,15 @@ interface StoryboardDisplay {
   camera: string;
 }
 
+interface StreamContent {
+  summary?: string;
+  artStyle?: ArtStyleDisplay;
+  subjects?: SubjectDisplay[];
+  scenes?: SceneDisplay[];
+  storyboard?: StoryboardDisplay[];
+  packageName?: string;
+}
+
 interface AssetPackage {
   id: string;
   title: string;
@@ -428,6 +481,7 @@ interface AssetPackage {
   unassignedImages: GeneratedImage[];
   allImages: GeneratedImage[];
   imageSize: string;
+  imageModelId?: string;
 }
 
 interface ConversationMessage {
@@ -437,6 +491,14 @@ interface ConversationMessage {
   role: 'user' | 'system';
   status?: 'loading' | 'completed' | 'warning' | 'error';
   step?: string;
+  kind?: 'text' | 'todo';
+  todoItems?: TodoListItem[];
+}
+
+interface TodoListItem {
+  id: string;
+  label: string;
+  status: 'pending' | 'done';
 }
 
 interface CurrentObject {
@@ -462,6 +524,9 @@ const isSavingImageSize = ref(false);
 const baseMessages = ref<ConversationMessage[]>([]);
 const pendingMessages = ref<ConversationMessage[]>([]);
 const streamMessages = ref<ConversationMessage[]>([]);
+const streamTodoItems = ref<TodoListItem[]>([]);
+const imageModels = ref<ModelOption[]>([]);
+const selectedImageModelId = ref('');
 const conversationMessages = computed(() => {
   return [...baseMessages.value, ...pendingMessages.value, ...streamMessages.value].sort(
     (a, b) => a.createdAt - b.createdAt
@@ -483,6 +548,8 @@ const dialogListRef = ref<HTMLDivElement | null>(null);
 const streamSource = ref<EventSource | null>(null);
 const streamDone = ref(false);
 const streamWarningShown = ref(false);
+const isStreaming = ref(false);
+const streamContent = ref<StreamContent>({});
 const fallbackPollingId = ref<number | null>(null);
 const streamWatchdogId = ref<number | null>(null);
 const lastStreamEventAt = ref(0);
@@ -504,6 +571,7 @@ const isImageAdopting = ref(false);
 const isPropagating = ref(false);
 const isImageBusy = computed(() => isRegenerating.value || isImageAdopting.value || isPropagating.value);
 const isTextBusy = computed(() => isTextAdopting.value || isPropagating.value);
+const previewImage = ref<GeneratedImage | null>(null);
 
 const mapPackageStatus = (status: string) => {
   if (status === 'completed') return 'done';
@@ -520,16 +588,43 @@ const formatPromptSource = (source?: string) => {
   return '系统生成';
 };
 
+const formatViewName = (view?: string) => {
+  const normalized = (view || '').trim().toLowerCase();
+  if (normalized === 'front') return '正面';
+  if (normalized === 'side') return '侧面';
+  if (normalized === 'back') return '背面';
+  return view || '';
+};
+
+const formatViewLabel = (views: string[]) => {
+  const labels = views.map(view => formatViewName(view)).filter(label => label);
+  return labels.join(' / ');
+};
+
 const formatImageLabel = (image: GeneratedImage) => {
   if (image.type === 'character_sheet') {
     return '三视图';
   }
-  return image.prompt || '暂无提示词';
+  if (image.type === 'character_view') {
+    return formatViewName(image.view) || '角色视图';
+  }
+  if (image.type === 'scene') {
+    return '场景图';
+  }
+  return image.prompt || '图片';
 };
 
 const buildPromptTooltip = (image: GeneratedImage) => {
   const prompt = image.prompt || '暂无提示词';
   return `提示词：${prompt}\n来源：${formatPromptSource(image.promptSource)}`;
+};
+
+const openImagePreview = (image: GeneratedImage) => {
+  previewImage.value = image;
+};
+
+const closeImagePreview = () => {
+  previewImage.value = null;
 };
 
 const buildArtStyleContent = (artStyle: ArtStyleDisplay) => {
@@ -737,7 +832,13 @@ const propagateArtStyleToImages = async (artStyle: ArtStyleDisplay) => {
       const prompt = buildPropagationPrompt(image, artStyle);
       if (!prompt) continue;
       const size = getImageSizeForGeneration();
-      await regenerateImage(image.id, prompt, "art_style_propagation", size || undefined);
+      await regenerateImage(
+        image.id,
+        prompt,
+        "art_style_propagation",
+        size || undefined,
+        selectedImageModelId.value || undefined
+      );
     }
     await loadPackages();
   } catch (err) {
@@ -781,6 +882,23 @@ const formatAspectRatio = (width: number, height: number) => {
   return `${Math.round(width / divisor)}:${Math.round(height / divisor)}`;
 };
 
+const pickImageModel = (preferred?: string) => {
+  const enabledModels = imageModels.value.filter(model => model.enabled);
+  const fallback = enabledModels.find(model => model.is_default) || enabledModels[0];
+  if (preferred) {
+    const match = imageModels.value.find(model => model.id === preferred && model.enabled);
+    if (match) {
+      selectedImageModelId.value = match.id;
+      sessionStorage.setItem('selectedImageModelId', match.id);
+      return;
+    }
+  }
+  if (fallback) {
+    selectedImageModelId.value = fallback.id;
+    sessionStorage.setItem('selectedImageModelId', fallback.id);
+  }
+};
+
 const getImageSizeForGeneration = () => {
   const parsed = parseImageSize(imageSizeInput.value);
   if (parsed) {
@@ -808,6 +926,7 @@ const mapMaterialPackage = (pkg: MaterialPackage): AssetPackage => {
     (metadata as any).image_size,
     normalizeText((metadata as any).image_plan?.size, '960x1280')
   );
+  const imageModelId = normalizeText((metadata as any).image_model_id, '');
 
   const storySummary = normalizeText(
     summary.logline,
@@ -879,6 +998,7 @@ const mapMaterialPackage = (pkg: MaterialPackage): AssetPackage => {
         promptSource: normalizeText(item.prompt_source, ''),
         provider: typeof item.provider === 'string' ? item.provider : undefined,
         model: typeof item.model === 'string' ? item.model : undefined,
+        modelId: normalizeText(item.model_id || item.modelId, ''),
         size: typeof item.size === 'string' ? item.size : undefined,
         type,
         sceneId,
@@ -957,7 +1077,7 @@ const mapMaterialPackage = (pkg: MaterialPackage): AssetPackage => {
       return false;
     });
     const hasSheet = imagesForSubject.some(img => img.type === 'character_sheet');
-    const viewLabel = hasSheet ? '三视图' : resolvedViews.join(' / ');
+    const viewLabel = hasSheet ? '三视图' : formatViewLabel(resolvedViews);
     return {
       id,
       name,
@@ -1054,6 +1174,7 @@ const mapMaterialPackage = (pkg: MaterialPackage): AssetPackage => {
     unassignedImages,
     allImages: images,
     imageSize,
+    imageModelId: imageModelId || undefined,
   };
 };
 
@@ -1077,30 +1198,73 @@ const addPendingUserMessage = (text: string, createdAt = Date.now()) => {
 
 const resetStreamMessages = () => {
   streamMessages.value = [];
+  streamTodoItems.value = [];
+  streamContent.value = {};
+  isStreaming.value = false;
 };
 
-const upsertStreamMessage = (payload: { step?: string; status?: string; message?: string }) => {
-  const step = typeof payload.step === 'string' ? payload.step : '';
-  const status = payload.status === 'completed' ? 'completed' : 'loading';
-  const text = typeof payload.message === 'string' ? payload.message : '';
-  const existingIndex = streamMessages.value.findIndex(item => item.step === step);
-  if (existingIndex >= 0) {
-    const existing = streamMessages.value[existingIndex];
-    streamMessages.value[existingIndex] = {
-      ...existing,
-      text: text || existing.text,
-      status,
+const applyContentUpdate = (section: string, data: any) => {
+  if (section === 'summary') {
+    streamContent.value.summary = typeof data === 'string' ? data : '';
+    return;
+  }
+  if (section === 'package_name') {
+    streamContent.value.packageName = typeof data === 'string' ? data : '';
+    return;
+  }
+  if (section === 'art_style' && data && typeof data === 'object') {
+    const palette = Array.isArray(data.palette)
+      ? data.palette.map((item: any) => String(item).trim()).filter((item: string) => item)
+      : [];
+    streamContent.value.artStyle = {
+      styleName: typeof data.style_name === 'string' ? data.style_name : (data.styleName || data.name || ''),
+      stylePrompt: typeof data.style_prompt === 'string' ? data.style_prompt : (data.stylePrompt || ''),
+      palette,
     };
     return;
   }
-  streamMessages.value.push({
-    id: `stream-${step || 'step'}-${Date.now()}`,
-    text,
-    createdAt: Date.now(),
-    role: 'system',
-    status,
-    step: step || undefined,
-  });
+  if (section === 'characters' && Array.isArray(data)) {
+    streamContent.value.subjects = data.map((item: any, index: number) => ({
+      id: item.id ? String(item.id) : `char_${index + 1}`,
+      name: typeof item.name === 'string' ? item.name : `角色 ${index + 1}`,
+      role: typeof item.role === 'string' ? item.role : '未指定',
+      description: typeof item.description === 'string' ? item.description : '',
+      views: ['front', 'side', 'back'],
+      viewLabel: '三视图',
+      images: [],
+    }));
+    return;
+  }
+  if (section === 'scenes' && Array.isArray(data)) {
+    streamContent.value.scenes = data.map((item: any, index: number) => ({
+      id: item.id ? String(item.id) : `scene_${index + 1}`,
+      name: typeof item.name === 'string' ? item.name : `场景 ${index + 1}`,
+      description: typeof item.description === 'string' ? item.description : '',
+      mood: typeof item.mood === 'string' ? item.mood : '未指定',
+      images: [],
+    }));
+    return;
+  }
+  if (section === 'storyboard' && Array.isArray(data)) {
+    const sceneNameById = new Map<string, string>();
+    (streamContent.value.scenes || []).forEach(scene => {
+      if (scene.id) {
+        sceneNameById.set(scene.id, scene.name);
+      }
+    });
+    streamContent.value.storyboard = data.map((item: any, index: number) => {
+      const sceneId = typeof item.scene_id === 'string' ? item.scene_id : 'scene_1';
+      return {
+        id: item.id ? String(item.id) : `shot_${index + 1}`,
+        shotNumber: typeof item.shot_number === 'number' ? item.shot_number : index + 1,
+        description: typeof item.description === 'string' ? item.description : '',
+        sceneId,
+        sceneName: sceneNameById.get(sceneId) || '',
+        durationSec: typeof item.duration_sec === 'number' ? item.duration_sec : 3,
+        camera: typeof item.camera === 'string' ? item.camera : '',
+      };
+    });
+  }
 };
 
 const pushStreamError = (message: string, step?: string) => {
@@ -1110,6 +1274,7 @@ const pushStreamError = (message: string, step?: string) => {
     createdAt: Date.now(),
     role: 'system',
     status: 'error',
+    kind: 'text',
     step,
   });
 };
@@ -1123,23 +1288,73 @@ const pushStreamWarning = (message: string) => {
     createdAt: Date.now(),
     role: 'system',
     status: 'warning',
+    kind: 'text',
   });
 };
 
 const stepLabels: Record<string, string> = {
-  outline: '故事梗概',
+  summary: '故事梗概',
   art_style: '美术风格',
   characters: '角色设定',
-  character_images: '角色三视图',
   scenes: '场景设定',
-  scene_images: '场景图',
-  storyboard: '分镜剧本',
-  done: '素材包',
+  storyboard: '分镜脚本',
+  package_name: '素材包命名',
 };
 
 const formatErrorMessage = (step?: string) => {
   const label = step && stepLabels[step] ? stepLabels[step] : '生成步骤';
   return `在生成【${label}】时遇到问题`;
+};
+
+const upsertTodoMessage = () => {
+  if (!streamTodoItems.value.length) {
+    return;
+  }
+  const existingIndex = streamMessages.value.findIndex(item => item.kind === 'todo');
+  if (existingIndex >= 0) {
+    streamMessages.value[existingIndex] = {
+      ...streamMessages.value[existingIndex],
+      todoItems: [...streamTodoItems.value],
+    };
+    return;
+  }
+  streamMessages.value.push({
+    id: `stream-todo-${Date.now()}`,
+    text: '',
+    createdAt: Date.now(),
+    role: 'system',
+    kind: 'todo',
+    todoItems: [...streamTodoItems.value],
+  });
+};
+
+const setTodoList = (items: any[]) => {
+  streamTodoItems.value = items.map(item => ({
+    id: String(item.id),
+    label: String(item.label),
+    status: 'pending',
+  }));
+  upsertTodoMessage();
+};
+
+const updateTodoStatus = (id: string, status: string) => {
+  if (!streamTodoItems.value.length) return;
+  streamTodoItems.value = streamTodoItems.value.map(item => {
+    if (item.id !== id) return item;
+    return { ...item, status: status === 'done' ? 'done' : 'pending' };
+  });
+  upsertTodoMessage();
+};
+
+const pushAssistantMessage = (content: string) => {
+  streamMessages.value.push({
+    id: `stream-assistant-${Date.now()}`,
+    text: content,
+    createdAt: Date.now(),
+    role: 'system',
+    status: 'completed',
+    kind: 'text',
+  });
 };
 
 const stopFallbackPolling = () => {
@@ -1170,6 +1385,8 @@ const startFallbackPolling = () => {
       });
       if (hasNewCompleted) {
         await loadPackages();
+        isStreaming.value = false;
+        streamContent.value = {};
         stopFallbackPolling();
       }
     } catch (err) {
@@ -1217,6 +1434,7 @@ const openGenerationStream = (
   resetStreamMessages();
   streamDone.value = false;
   streamWarningShown.value = false;
+  isStreaming.value = true;
   lastStreamEventAt.value = Date.now();
   generationSnapshotIds.value = new Set(Object.keys(assetPackages.value));
   if (context) {
@@ -1242,26 +1460,50 @@ const openGenerationStream = (
     } catch (err) {
       return;
     }
-    if (payload?.type === 'generation.step') {
-      upsertStreamMessage(payload);
-      if (payload.step === 'done' && payload.status === 'completed') {
-        streamDone.value = true;
-        stopFallbackPolling();
-        closeGenerationStream();
-        sessionStorage.removeItem('streamProjectId');
-        sessionStorage.removeItem('streamPrompt');
-        sessionStorage.removeItem('streamStartedAt');
-        sessionStorage.removeItem('streamType');
-        sessionStorage.removeItem('streamFeedback');
-        sessionStorage.removeItem('streamFeedbackPackageId');
-        loadPackages().catch(() => null);
+    if (payload?.type === 'assistant_message') {
+      if (typeof payload.content === 'string' && payload.content.trim()) {
+        pushAssistantMessage(payload.content.trim());
       }
+      return;
+    }
+    if (payload?.type === 'todo_list') {
+      if (Array.isArray(payload.items)) {
+        setTodoList(payload.items);
+      }
+      return;
+    }
+    if (payload?.type === 'todo_update') {
+      if (typeof payload.id === 'string') {
+        updateTodoStatus(payload.id, String(payload.status || 'done'));
+      }
+      return;
+    }
+    if (payload?.type === 'content_update') {
+      if (typeof payload.section === 'string') {
+        applyContentUpdate(payload.section, payload.data);
+      }
+      return;
+    }
+    if (payload?.type === 'done') {
+      streamDone.value = true;
+      isStreaming.value = false;
+      stopFallbackPolling();
+      closeGenerationStream();
+      sessionStorage.removeItem('streamProjectId');
+      sessionStorage.removeItem('streamPrompt');
+      sessionStorage.removeItem('streamStartedAt');
+      sessionStorage.removeItem('streamType');
+      sessionStorage.removeItem('streamFeedback');
+      sessionStorage.removeItem('streamFeedbackPackageId');
+      loadPackages().catch(() => null);
+      streamContent.value = {};
       return;
     }
     if (payload?.type === 'generation.error') {
       const errorText = formatErrorMessage(payload.step);
       pushStreamError(errorText, payload.step);
       stopFallbackPolling();
+      isStreaming.value = false;
       closeGenerationStream();
     }
   };
@@ -1293,7 +1535,11 @@ const retryGeneration = async () => {
       sessionStorage.setItem('streamFeedbackPackageId', context.packageId);
       sessionStorage.setItem('streamStartedAt', String(Date.now()));
       openGenerationStream(context.projectId, context);
-      await submitMaterialPackageFeedback(context.packageId, context.input);
+      await submitMaterialPackageFeedback(
+        context.packageId,
+        context.input,
+        selectedImageModelId.value || undefined
+      );
       return;
     }
     sessionStorage.setItem('streamProjectId', context.projectId);
@@ -1302,7 +1548,12 @@ const retryGeneration = async () => {
     sessionStorage.setItem('streamStartedAt', String(Date.now()));
     const mode = sessionStorage.getItem('currentMode') || undefined;
     openGenerationStream(context.projectId, context);
-    await startGeneration(context.projectId, context.input, mode || undefined);
+    await startGeneration(
+      context.projectId,
+      context.input,
+      mode || undefined,
+      selectedImageModelId.value || undefined
+    );
   } catch (err) {
     closeGenerationStream();
     alert(err instanceof Error ? err.message : '重试失败');
@@ -1348,12 +1599,83 @@ const currentPackage = computed(() => {
   return assetPackages.value[currentPackageId.value];
 });
 
+const hasWorkspace = computed(() => {
+  if (currentPackage.value) return true;
+  if (isStreaming.value) return true;
+  return Object.keys(streamContent.value).length > 0;
+});
+
+const streamPackageName = computed(() => streamContent.value.packageName || '');
+const displaySummary = computed(() => {
+  if (streamContent.value.summary) {
+    return streamContent.value.summary;
+  }
+  if (isStreaming.value) {
+    return '生成中…';
+  }
+  return currentPackage.value?.storySummary || '生成中…';
+});
+const displayArtStyle = computed<ArtStyleDisplay>(() => {
+  if (streamContent.value.artStyle) {
+    return streamContent.value.artStyle;
+  }
+  if (isStreaming.value) {
+    return { styleName: '生成中…', stylePrompt: '', palette: [] };
+  }
+  return (
+    currentPackage.value?.artStyle || {
+      styleName: '生成中…',
+      stylePrompt: '',
+      palette: [],
+    }
+  );
+});
+const displaySubjects = computed(() => {
+  if (streamContent.value.subjects) {
+    return streamContent.value.subjects;
+  }
+  if (isStreaming.value) {
+    return [];
+  }
+  return currentPackage.value?.subjects || [];
+});
+const displayScenes = computed(() => {
+  if (streamContent.value.scenes) {
+    return streamContent.value.scenes;
+  }
+  if (isStreaming.value) {
+    return [];
+  }
+  return currentPackage.value?.scenes || [];
+});
+const displayStoryboard = computed(() => {
+  if (streamContent.value.storyboard) {
+    return streamContent.value.storyboard;
+  }
+  if (isStreaming.value) {
+    return [];
+  }
+  return currentPackage.value?.storyboard || [];
+});
+
 watch(
   () => currentPackage.value?.id,
   () => {
     imageSizeInput.value = currentPackage.value?.imageSize || '960x1280';
+    const stored = sessionStorage.getItem('selectedImageModelId') || '';
+    const preferred = currentPackage.value?.imageModelId || stored;
+    pickImageModel(preferred);
   },
   { immediate: true }
+);
+
+watch(
+  () => selectedImageModelId.value,
+  value => {
+    if (value) {
+      sessionStorage.setItem('selectedImageModelId', value);
+    }
+  }
 );
 
 const currentAudioUrl = computed(() => {
@@ -1472,7 +1794,7 @@ const sendChat = async () => {
   });
 
   try {
-    await submitMaterialPackageFeedback(currentPackageId.value, text);
+    await submitMaterialPackageFeedback(currentPackageId.value, text, selectedImageModelId.value || undefined);
   } catch (err) {
     closeGenerationStream();
     alert(err instanceof Error ? err.message : '提交修改意见失败');
@@ -1503,7 +1825,13 @@ const handleRegenerate = async () => {
   startRegeneration(selectedImage.value);
   try {
     const size = getImageSizeForGeneration();
-    await regenerateImage(selectedImage.value.id, prompt, "user_edit", size || undefined);
+    await regenerateImage(
+      selectedImage.value.id,
+      prompt,
+      "user_edit",
+      size || undefined,
+      selectedImageModelId.value || undefined
+    );
     await loadPackages();
   } catch (err) {
     alert(err instanceof Error ? err.message : '重新生成失败');
@@ -1570,7 +1898,13 @@ const submitFeedback = async () => {
   try {
     const result = await rewriteImagePrompt(selectedImage.value.id, feedback);
     const size = getImageSizeForGeneration();
-    await regenerateImage(selectedImage.value.id, result.rewritten_prompt, "user_feedback", size || undefined);
+    await regenerateImage(
+      selectedImage.value.id,
+      result.rewritten_prompt,
+      "user_feedback",
+      size || undefined,
+      selectedImageModelId.value || undefined
+    );
     feedbackInput.value = '';
     await loadPackages();
   } catch (err) {
@@ -1685,6 +2019,15 @@ onMounted(async () => {
   }
   currentProjectId.value = storedProjectId;
   maybeStartStreamFromSession();
+  fetchModels('image')
+    .then(items => {
+      imageModels.value = items;
+      const stored = sessionStorage.getItem('selectedImageModelId') || '';
+      pickImageModel(stored);
+    })
+    .catch(() => {
+      imageModels.value = [];
+    });
 
   try {
     const project = await fetchProject(storedProjectId);
@@ -1878,10 +2221,48 @@ onUnmounted(() => {
   margin-top: 6px;
 }
 
+.todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--md-on-surface);
+}
+
+.todo-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.todo-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(121, 116, 126, 0.6);
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.todo-status.done {
+  border: none;
+  background: #28c76f;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
+}
+
+.stream-title {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: rgba(103, 80, 164, 0.08);
+  color: var(--md-on-surface);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .pkg-chip {
@@ -1910,6 +2291,7 @@ onUnmounted(() => {
 /* Chat Input */
 .chat-input {
   display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
@@ -1925,6 +2307,12 @@ onUnmounted(() => {
   resize: vertical;
 }
 
+.chat-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .chat-input button {
   padding: 10px 12px;
   border-radius: 10px;
@@ -1932,6 +2320,16 @@ onUnmounted(() => {
   background: rgba(103, 80, 164, 0.12);
   color: var(--md-on-surface);
   cursor: pointer;
+}
+
+.model-select {
+  flex: 1;
+  background: var(--md-surface-container-low);
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  color: var(--md-on-surface);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
 }
 
 /* Center Topbar */
@@ -2293,6 +2691,88 @@ onUnmounted(() => {
   padding: 6px;
   max-height: 40px;
   overflow: hidden;
+}
+
+.thumb-preview-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+}
+
+.image-preview-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.image-preview-card {
+  position: relative;
+  max-width: min(920px, 100%);
+  max-height: 90vh;
+  background: var(--md-surface);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+.image-preview-card img {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  background: #111;
+}
+
+.preview-meta {
+  padding: 12px 14px;
+  background: var(--md-surface-container);
+  border-top: 1px solid rgba(121, 116, 126, 0.2);
+}
+
+.preview-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.preview-sub {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  margin-bottom: 6px;
+}
+
+.preview-prompt {
+  font-size: 12px;
+  color: var(--md-on-surface);
+  line-height: 1.5;
+  max-height: 96px;
+  overflow: auto;
+}
+
+.preview-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 18px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
 }
 
 .storyboard-list {

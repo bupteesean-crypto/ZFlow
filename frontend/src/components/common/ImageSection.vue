@@ -14,6 +14,7 @@
       >
         <img :src="item.url" :alt="item.prompt || '生成图片'" class="image" />
         <div v-if="item.isActive" class="active-badge">✅</div>
+        <button class="preview-btn" @click.stop="emit('preview', item)">查看大图</button>
         <div class="meta">
           <div class="prompt">{{ item.prompt || '暂无提示词' }}</div>
           <div class="provider">
@@ -59,6 +60,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: "select", image: ImageItem): void;
+  (event: "preview", image: ImageItem): void;
 }>();
 
 
@@ -149,6 +151,19 @@ const isLoading = (item: ImageItem) => {
   height: 120px;
   object-fit: cover;
   background: rgba(0, 0, 0, 0.04);
+}
+
+.preview-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
 }
 
 .active-badge {

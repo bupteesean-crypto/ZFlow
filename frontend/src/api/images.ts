@@ -15,14 +15,18 @@ export async function regenerateImage(
   imageId: string,
   prompt: string,
   promptSource?: string,
-  size?: string
+  size?: string,
+  modelId?: string
 ): Promise<RegenerateImageResponse> {
-  const payload: { prompt: string; prompt_source?: string; size?: string } = { prompt };
+  const payload: { prompt: string; prompt_source?: string; size?: string; model_id?: string } = { prompt };
   if (promptSource) {
     payload.prompt_source = promptSource;
   }
   if (size) {
     payload.size = size;
+  }
+  if (modelId) {
+    payload.model_id = modelId;
   }
   const { data } = await request.post<ApiResponse<RegenerateImageResponse>>(
     `/images/${imageId}/regenerate`,

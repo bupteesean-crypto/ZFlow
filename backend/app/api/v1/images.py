@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.repositories import material_packages as package_repo
 from app.services.feedback_service import FeedbackService
 from app.services.image_service import ImageService
+from app.services.model_registry import select_enabled_model
 from app.store import new_id
 
 router = APIRouter(prefix="/images", tags=["images"])
@@ -186,6 +187,10 @@ async def regenerate_image(
     size = payload.get("size")
     if size is not None and not isinstance(size, str):
         raise HTTPException(status_code=400, detail="size must be a string")
+    model_id = payload.get("model_id")
+    if model_id is not None and not isinstance(model_id, str):
+        raise HTTPException(status_code=400, detail="model_id must be a string")
+    model_id = model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
 
     try:
         package, source_image, images = _find_image(db, image_id)
@@ -199,6 +204,24 @@ async def regenerate_image(
     metadata = dict(materials.get("metadata") or {})
     if not size:
         size = metadata.get("image_size") if isinstance(metadata.get("image_size"), str) else None
+    resolved_model_id = None
+    resolved_model = None
+    if model_id:
+        try:
+            spec = select_enabled_model(model_id, "image")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="model_id not available")
+        resolved_model_id = spec.id if spec else None
+        resolved_model = spec.model if spec else None
+    elif isinstance(metadata.get("image_model_id"), str) and metadata.get("image_model_id").strip():
+        stored_id = metadata.get("image_model_id").strip()
+        try:
+            spec = select_enabled_model(stored_id, "image")
+            resolved_model_id = spec.id if spec else None
+            resolved_model = spec.model if spec else None
+        except ValueError:
+            resolved_model_id = None
+            resolved_model = None
     ref_images: list[str] = []
     if source_image.get("type") == "storyboard":
         blueprint = metadata.get("blueprint_v1") if isinstance(metadata, dict) else {}
@@ -239,9 +262,9 @@ async def regenerate_image(
 
     try:
         if ref_images:
-            image_result = image_service.generate_image_with_refs(prompt, ref_images, size=size)
+            image_result = image_service.generate_image_with_refs(prompt, ref_images, size=size, model=resolved_model)
         else:
-            image_result = image_service.generate_image(prompt, size=size)
+            image_result = image_service.generate_image(prompt, size=size, model=resolved_model)
     except Exception:
         logger.exception("image regeneration failed image_id=%s", image_id)
         raise HTTPException(status_code=502, detail="Image generation failed")
@@ -267,6 +290,7 @@ async def regenerate_image(
         "regenerated_from": image_id,
         "provider": image_result.get("provider"),
         "model": image_result.get("model"),
+        "model_id": resolved_model_id,
         "size": image_result.get("size"),
     }
 
@@ -275,6 +299,8 @@ async def regenerate_image(
     existing_images = list(metadata.get("images") or [])
     existing_images.append(new_image)
     metadata["images"] = existing_images
+    if resolved_model_id:
+        metadata["image_model_id"] = resolved_model_id
     if size:
         metadata["image_size"] = size
         image_plan = metadata.get("image_plan") if isinstance(metadata.get("image_plan"), dict) else {}

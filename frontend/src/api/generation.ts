@@ -22,14 +22,20 @@ export type GenerationProgressResponse = {
 export async function startGeneration(
   projectId: string,
   prompt?: string,
-  mode?: string
+  mode?: string,
+  imageModelId?: string
 ): Promise<GenerationTask> {
-  const payload: { project_id: string; prompt?: string; mode?: string } = { project_id: projectId };
+  const payload: { project_id: string; prompt?: string; mode?: string; image_model_id?: string } = {
+    project_id: projectId,
+  };
   if (prompt) {
     payload.prompt = prompt;
   }
   if (mode) {
     payload.mode = mode;
+  }
+  if (imageModelId) {
+    payload.image_model_id = imageModelId;
   }
   const { data } = await request.post<ApiResponse<GenerationTask>>("/generation/start", payload);
   if (data.code !== 0) {

@@ -15,3 +15,5 @@ USERS_BY_PHONE: Dict[str, Dict[str, Any]] = {}
 SESSIONS: Dict[str, Dict[str, Any]] = {}
 GENERATION_TASKS: Dict[str, Dict[str, Any]] = {}
 GENERATION_TRACES: Dict[str, str] = {}
+EXPORT_TASKS: Dict[str, Dict[str, Any]] = {}
+EXPORT_FILES: Dict[str, Dict[str, Any]] = {}

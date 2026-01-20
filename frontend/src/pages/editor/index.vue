@@ -11,10 +11,10 @@
       <div class="floating-ops">
         <button
           class="pill-btn"
-          :disabled="clips.length === 0 || isBulkGeneratingVideo"
-          @click="generateAllVideos"
+          :disabled="clips.length === 0 || isExporting"
+          @click="openExportModal"
         >
-          一键导出视频
+          导出
         </button>
         <button class="pill-btn ghost" @click="goBack">← 返回素材</button>
       </div>
@@ -64,6 +64,14 @@
                 rows="4"
                 placeholder="编辑分镜画面提示词"
               ></textarea>
+              <div class="field-row">
+                <span class="label">图片模型</span>
+                <select v-model="selectedImageModelId" class="model-select" :disabled="isRegeneratingImage">
+                  <option v-for="model in imageModels" :key="model.id" :value="model.id" :disabled="!model.enabled">
+                    {{ model.label }}{{ model.enabled ? '' : '（未启用）' }}
+                  </option>
+                </select>
+              </div>
               <div class="action-row">
                 <button
                   v-if="!isEditingPrompt"
@@ -106,6 +114,14 @@
 
           <div class="info-card">
             <div class="info-title">视频片段</div>
+            <div class="field-row">
+              <span class="label">视频模型</span>
+              <select v-model="selectedVideoModelId" class="model-select" :disabled="isGeneratingVideo">
+                <option v-for="model in videoModels" :key="model.id" :value="model.id" :disabled="!model.enabled">
+                  {{ model.label }}{{ model.enabled ? '' : '（未启用）' }}
+                </option>
+              </select>
+            </div>
             <div class="action-row">
               <button
                 class="pill-btn primary"
@@ -181,6 +197,9 @@
             class="canvas-video"
             controls
             playsinline
+            @play="handleVideoPlay"
+            @pause="handleVideoPause"
+            @timeupdate="handleVideoTimeUpdate"
             @ended="handleVideoEnded"
           ></video>
           <img v-else-if="currentClip?.imageUrl" :src="currentClip.imageUrl" alt="分镜画面" class="canvas-image" />
@@ -206,13 +225,6 @@
         <div class="timeline-actions">
           <span v-if="isGeneratingStoryboard" class="timeline-status">正在生成分镜画面…</span>
           <span v-else-if="storyboardError" class="timeline-error">{{ storyboardError }}</span>
-          <button
-            class="pill-btn"
-            :disabled="clips.length === 0 || isGeneratingStoryboard"
-            @click="forceRegenerateStoryboard"
-          >
-            强制重生成分镜
-          </button>
           <button class="pill-btn" @click="togglePlayAll" :disabled="clips.length === 0">
             {{ isPlaying && playMode === 'all' ? '暂停' : '播放' }}
           </button>
@@ -310,6 +322,113 @@
         </div>
       </div>
     </div>
+
+    <div v-if="showExportModal" class="modal-backdrop">
+      <div class="modal-card export-modal">
+        <div class="modal-title">导出配置</div>
+        <div class="export-grid">
+          <label class="field-row">
+            <span class="label">分辨率</span>
+            <select v-model="exportConfig.resolution" class="model-select">
+              <option value="720p">720p</option>
+              <option value="1080p">1080p</option>
+              <option value="4k">4K</option>
+            </select>
+          </label>
+          <label class="field-row">
+            <span class="label">格式</span>
+            <select v-model="exportConfig.format" class="model-select">
+              <option value="mp4">MP4</option>
+              <option value="mov">MOV</option>
+            </select>
+          </label>
+          <label class="field-row">
+            <span class="label">画幅</span>
+            <select v-model="exportConfig.aspectRatio" class="model-select">
+              <option value="16:9">16:9</option>
+              <option value="9:16">9:16</option>
+              <option value="1:1">1:1</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="export-section">
+          <div class="field-row">
+            <span class="label">字幕</span>
+            <label class="toggle">
+              <input type="checkbox" v-model="exportConfig.subtitleEnabled" />
+              <span>启用字幕</span>
+            </label>
+          </div>
+          <div v-if="exportConfig.subtitleEnabled" class="export-grid">
+            <label class="field-row">
+              <span class="label">烧录</span>
+              <label class="toggle">
+                <input type="checkbox" v-model="exportConfig.subtitleBurnIn" />
+                <span>烧录字幕</span>
+              </label>
+            </label>
+            <label class="field-row">
+              <span class="label">字体</span>
+              <input v-model="exportConfig.subtitleFont" class="text-input" placeholder="思源黑体" />
+            </label>
+            <label class="field-row">
+              <span class="label">颜色</span>
+              <input v-model="exportConfig.subtitleColor" class="text-input" placeholder="#FFFFFF" />
+            </label>
+            <label class="field-row">
+              <span class="label">字号</span>
+              <input v-model="exportConfig.subtitleSize" class="text-input" placeholder="36" />
+            </label>
+          </div>
+        </div>
+
+        <div class="export-section">
+          <div class="field-row">
+            <span class="label">封面</span>
+            <select v-model="exportConfig.coverMode" class="model-select">
+              <option value="auto">自动生成</option>
+              <option value="none">不生成</option>
+            </select>
+          </div>
+        </div>
+
+        <div v-if="exportEstimatedMinutes" class="export-note">
+          导出可能需要较长时间，预计完成时间为 {{ exportEstimatedMinutes }} 分钟。
+        </div>
+        <div v-if="exportStatus === 'running'" class="export-note">
+          导出进度：{{ exportProgress }}%
+        </div>
+
+        <div v-if="exportStatus === 'completed'" class="export-success">
+          导出完成！您可以下载文件。
+        </div>
+        <div v-if="exportStatus === 'failed'" class="export-error">
+          导出失败，请稍后重试。
+        </div>
+
+        <div v-if="exportFiles.length" class="export-files">
+          <div v-for="file in exportFiles" :key="file.id" class="export-file">
+            <div class="export-file-meta">
+              <span>{{ file.format || 'MP4' }}</span>
+              <span>{{ file.resolution || exportConfig.resolution }}</span>
+            </div>
+            <button class="pill-btn primary" @click="downloadExportFile(file.id)">下载</button>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="pill-btn ghost" @click="closeExportModal">后台导出</button>
+          <button
+            class="pill-btn primary"
+            :disabled="isExporting || exportStatus === 'running'"
+            @click="startExport"
+          >
+            {{ exportStatus === 'running' ? '导出中…' : '开始导出' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -325,7 +444,15 @@ import {
   generateStoryboardVideos,
   type MaterialPackage,
 } from '@/api/material-packages';
+import {
+  createExportTask,
+  fetchExportDownloadUrl,
+  fetchExportFiles,
+  fetchExportTask,
+  type ExportFile,
+} from '@/api/exports';
 import { adoptImage, regenerateImage, rewriteImagePrompt } from '@/api/images';
+import { fetchModels, type ModelOption } from '@/api/models';
 import { fetchProject } from '@/api/projects';
 
 interface Clip {
@@ -361,8 +488,11 @@ const timelineRef = ref<HTMLElement | null>(null);
 
 const currentClip = computed(() => clips.value[currentShotIndex.value] || null);
 const isGeneratingStoryboard = ref(false);
-const storyboardGenerationAttempted = ref(false);
 const storyboardError = ref('');
+const storyboardRetryCount = ref(0);
+const MAX_STORYBOARD_RETRIES = 2;
+const STORYBOARD_RETRY_DELAY_MS = 5000;
+let storyboardRetryTimer: number | null = null;
 const isEditingPrompt = ref(false);
 const isImagePromptOpen = ref(false);
 const isVideoPromptOpen = ref(false);
@@ -370,7 +500,6 @@ const promptDraft = ref('');
 const feedbackDraft = ref('');
 const isRegeneratingImage = ref(false);
 const isGeneratingVideo = ref(false);
-const isBulkGeneratingVideo = ref(false);
 const showImageFeedbackModal = ref(false);
 const showVideoFeedbackModal = ref(false);
 
@@ -391,6 +520,39 @@ const videoState = ref<Record<string, VideoState>>({});
 const isEditingVideoPrompt = ref(false);
 const videoPromptDraft = ref('');
 const videoFeedbackDraft = ref('');
+const imageModels = ref<ModelOption[]>([]);
+const videoModels = ref<ModelOption[]>([]);
+const selectedImageModelId = ref('');
+const selectedVideoModelId = ref('');
+const showExportModal = ref(false);
+const exportTaskId = ref('');
+const exportStatus = ref<'idle' | 'running' | 'completed' | 'failed'>('idle');
+const exportProgress = ref(0);
+const exportEstimatedMinutes = ref(0);
+const exportFiles = ref<ExportFile[]>([]);
+const isExporting = ref(false);
+const exportConfig = ref({
+  resolution: '1080p',
+  format: 'mp4',
+  aspectRatio: '16:9',
+  subtitleEnabled: false,
+  subtitleBurnIn: false,
+  subtitleFont: '思源黑体',
+  subtitleColor: '#FFFFFF',
+  subtitleSize: '36',
+  coverMode: 'auto',
+});
+let exportPollTimer: number | null = null;
+
+const getExportTaskStorageKey = (projectId: string) => `exportTaskId:${projectId}`;
+
+const storeExportTaskId = (projectId: string, taskId: string) => {
+  sessionStorage.setItem(getExportTaskStorageKey(projectId), taskId);
+};
+
+const clearExportTaskId = (projectId: string) => {
+  sessionStorage.removeItem(getExportTaskStorageKey(projectId));
+};
 
 const clipStartTimes = computed(() => {
   const starts: number[] = [];
@@ -418,6 +580,147 @@ const defaultVideoStateForClip = (clip?: Clip): VideoState => ({
   prompt: clip?.prompt || '',
   feedback: '',
 });
+
+const pickModel = (items: ModelOption[], storedId: string, type: 'image' | 'video') => {
+  if (!items.length) return;
+  const enabled = items.filter(item => item.enabled);
+  const fallback = enabled.find(item => item.is_default) || enabled[0];
+  if (!fallback) return;
+  const matched = items.find(item => item.id === storedId && item.enabled)?.id || fallback.id;
+  if (type === 'image') {
+    selectedImageModelId.value = matched;
+    sessionStorage.setItem('selectedImageModelId', matched);
+  } else {
+    selectedVideoModelId.value = matched;
+    sessionStorage.setItem('selectedVideoModelId', matched);
+  }
+};
+
+const openExportModal = () => {
+  showExportModal.value = true;
+  restoreExportTask().catch(() => null);
+  refreshExportFiles().catch(() => null);
+};
+
+const closeExportModal = () => {
+  showExportModal.value = false;
+  stopExportPolling();
+};
+
+const stopExportPolling = () => {
+  if (exportPollTimer !== null) {
+    window.clearInterval(exportPollTimer);
+    exportPollTimer = null;
+  }
+};
+
+const refreshExportFiles = async () => {
+  const projectId = sessionStorage.getItem('currentProjectId');
+  if (!projectId) return;
+  const files = await fetchExportFiles(projectId);
+  exportFiles.value = files;
+};
+
+const pollExportTask = async () => {
+  if (!exportTaskId.value) return;
+  const task = await fetchExportTask(exportTaskId.value);
+  exportProgress.value = Number(task.progress || 0);
+  if (task.status === 'completed') {
+    exportStatus.value = 'completed';
+    await refreshExportFiles();
+    const projectId = sessionStorage.getItem('currentProjectId');
+    if (projectId) {
+      clearExportTaskId(projectId);
+    }
+    stopExportPolling();
+    return;
+  }
+  if (task.status === 'failed') {
+    exportStatus.value = 'failed';
+    const projectId = sessionStorage.getItem('currentProjectId');
+    if (projectId) {
+      clearExportTaskId(projectId);
+    }
+    stopExportPolling();
+    return;
+  }
+  exportStatus.value = 'running';
+};
+
+const startExportPolling = () => {
+  stopExportPolling();
+  exportPollTimer = window.setInterval(() => {
+    pollExportTask().catch(() => null);
+  }, 5000);
+};
+
+const startExport = async () => {
+  const projectId = sessionStorage.getItem('currentProjectId');
+  if (!projectId) {
+    alert('缺少项目 ID，无法导出');
+    return;
+  }
+  if (isExporting.value) return;
+  isExporting.value = true;
+  exportStatus.value = 'running';
+  exportProgress.value = 0;
+  exportFiles.value = [];
+  try {
+    const result = await createExportTask(projectId, {
+      resolution: exportConfig.value.resolution,
+      format: exportConfig.value.format,
+      aspect_ratio: exportConfig.value.aspectRatio,
+      subtitle_enabled: exportConfig.value.subtitleEnabled,
+      subtitle_burn_in: exportConfig.value.subtitleBurnIn,
+      subtitle_style: {
+        font: exportConfig.value.subtitleFont,
+        color: exportConfig.value.subtitleColor,
+        size: exportConfig.value.subtitleSize,
+      },
+      cover_mode: exportConfig.value.coverMode,
+    });
+    exportTaskId.value = result.export_task_id;
+    storeExportTaskId(projectId, exportTaskId.value);
+    exportEstimatedMinutes.value = result.estimated_minutes || 0;
+    startExportPolling();
+    pollExportTask().catch(() => null);
+  } catch (err) {
+    exportStatus.value = 'failed';
+    alert(err instanceof Error ? err.message : '导出失败');
+  } finally {
+    isExporting.value = false;
+  }
+};
+
+const restoreExportTask = async () => {
+  const projectId = sessionStorage.getItem('currentProjectId');
+  if (!projectId) return;
+  const storedTaskId = sessionStorage.getItem(getExportTaskStorageKey(projectId));
+  if (!storedTaskId) return;
+  exportTaskId.value = storedTaskId;
+  exportStatus.value = 'running';
+  exportProgress.value = 0;
+  try {
+    await pollExportTask();
+    if (exportStatus.value === 'running') {
+      startExportPolling();
+    }
+  } catch (err) {
+    clearExportTaskId(projectId);
+  }
+};
+
+const downloadExportFile = async (fileId: string) => {
+  if (!fileId) return;
+  try {
+    const url = await fetchExportDownloadUrl(fileId);
+    if (url) {
+      window.open(url, '_blank');
+    }
+  } catch (err) {
+    alert(err instanceof Error ? err.message : '获取下载链接失败');
+  }
+};
 
 const currentVideoState = computed(() => {
   if (!currentClip.value) {
@@ -475,6 +778,35 @@ const stopVideoPolling = () => {
   }
 };
 
+const clearStoryboardRetry = () => {
+  if (storyboardRetryTimer !== null) {
+    window.clearTimeout(storyboardRetryTimer);
+    storyboardRetryTimer = null;
+  }
+  storyboardRetryCount.value = 0;
+};
+
+const scheduleStoryboardRetry = (packageId: string) => {
+  if (storyboardRetryCount.value >= MAX_STORYBOARD_RETRIES) {
+    storyboardError.value = '分镜图生成失败，请稍后重试';
+    return;
+  }
+  storyboardRetryCount.value += 1;
+  storyboardError.value = `分镜图生成失败，正在自动重试（${storyboardRetryCount.value}/${MAX_STORYBOARD_RETRIES}）`;
+  if (storyboardRetryTimer !== null) {
+    window.clearTimeout(storyboardRetryTimer);
+  }
+  storyboardRetryTimer = window.setTimeout(async () => {
+    storyboardRetryTimer = null;
+    try {
+      const latest = await fetchMaterialPackage(packageId);
+      await ensureStoryboardImages(latest);
+    } catch (err) {
+      storyboardError.value = err instanceof Error ? err.message : '素材包刷新失败';
+    }
+  }, STORYBOARD_RETRY_DELAY_MS);
+};
+
 const pausePlayback = () => {
   if (playTimer !== null) {
     window.clearInterval(playTimer);
@@ -487,8 +819,35 @@ const pausePlayback = () => {
   isPlaying.value = false;
 };
 
+const handleVideoPlay = () => {
+  if (!videoRef.value) return;
+  if (playMode.value !== 'video') {
+    stopPlayback();
+  }
+  playMode.value = 'video';
+  isPlaying.value = true;
+  const start = clipStartTimes.value[currentShotIndex.value] ?? 0;
+  currentTimeSec.value = start + (videoRef.value.currentTime || 0);
+};
+
+const handleVideoPause = () => {
+  if (playMode.value === 'video') {
+    isPlaying.value = false;
+    playMode.value = null;
+  }
+};
+
+const handleVideoTimeUpdate = () => {
+  if (!videoRef.value) return;
+  const start = clipStartTimes.value[currentShotIndex.value] ?? 0;
+  currentTimeSec.value = start + (videoRef.value.currentTime || 0);
+};
+
 const handleVideoEnded = () => {
   if (playMode.value === 'video') {
+    const start = clipStartTimes.value[currentShotIndex.value] ?? 0;
+    const clipDuration = currentClip.value?.durationSec || 0;
+    currentTimeSec.value = start + clipDuration;
     isPlaying.value = false;
     playMode.value = null;
   }
@@ -699,6 +1058,14 @@ watch(
   () => currentClip.value,
   clip => {
     if (!clip) return;
+    if (playMode.value === 'video') {
+      isPlaying.value = false;
+      playMode.value = null;
+    }
+    if (videoRef.value) {
+      videoRef.value.pause();
+      videoRef.value.currentTime = 0;
+    }
     isEditingPrompt.value = false;
     isImagePromptOpen.value = false;
     promptDraft.value = clip.prompt || '';
@@ -940,36 +1307,25 @@ const refreshPackage = async (packageId: string, preserveShotId?: string) => {
 };
 
 const ensureStoryboardImages = async (pkg: MaterialPackage) => {
-  if (storyboardGenerationAttempted.value || isGeneratingStoryboard.value) return;
-  if (!hasMissingStoryboardImages(pkg)) return;
-  storyboardGenerationAttempted.value = true;
+  if (isGeneratingStoryboard.value) return;
+  if (!hasMissingStoryboardImages(pkg)) {
+    storyboardError.value = '';
+    clearStoryboardRetry();
+    return;
+  }
   isGeneratingStoryboard.value = true;
   storyboardError.value = '';
   try {
-    const result = await generateStoryboardImages(pkg.id);
+    const result = await generateStoryboardImages(pkg.id, false, selectedImageModelId.value || undefined);
     if (!result.generated || result.generated.length === 0) {
-      storyboardError.value = '分镜图生成失败，可能素材图不可访问或模型返回为空';
+      scheduleStoryboardRetry(pkg.id);
+    } else {
+      clearStoryboardRetry();
+      storyboardError.value = '';
     }
     await refreshPackage(pkg.id);
   } catch (err) {
-    storyboardError.value = err instanceof Error ? err.message : '分镜图生成失败，请稍后重试';
-  } finally {
-    isGeneratingStoryboard.value = false;
-  }
-};
-
-const forceRegenerateStoryboard = async () => {
-  if (!currentPackageId.value) return;
-  isGeneratingStoryboard.value = true;
-  storyboardError.value = '';
-  try {
-    const result = await generateStoryboardImages(currentPackageId.value, true);
-    if (!result.generated || result.generated.length === 0) {
-      storyboardError.value = '分镜图生成失败，可能素材图不可访问或模型返回为空';
-    }
-    await refreshPackage(currentPackageId.value);
-  } catch (err) {
-    storyboardError.value = err instanceof Error ? err.message : '分镜图生成失败，请稍后重试';
+    scheduleStoryboardRetry(pkg.id);
   } finally {
     isGeneratingStoryboard.value = false;
   }
@@ -996,7 +1352,13 @@ const regenerateWithPrompt = async () => {
   if (!prompt) return;
   isRegeneratingImage.value = true;
   try {
-    const result = await regenerateImage(currentClip.value.imageId, prompt, 'user_edit');
+    const result = await regenerateImage(
+      currentClip.value.imageId,
+      prompt,
+      'user_edit',
+      undefined,
+      selectedImageModelId.value || undefined
+    );
     if (result?.image?.id) {
       await adoptImage(result.image.id);
     }
@@ -1017,7 +1379,13 @@ const regenerateWithFeedback = async () => {
   isRegeneratingImage.value = true;
   try {
     const rewritten = await rewriteImagePrompt(currentClip.value.imageId, feedback);
-    const result = await regenerateImage(currentClip.value.imageId, rewritten.rewritten_prompt, 'user_feedback');
+    const result = await regenerateImage(
+      currentClip.value.imageId,
+      rewritten.rewritten_prompt,
+      'user_feedback',
+      undefined,
+      selectedImageModelId.value || undefined
+    );
     if (result?.image?.id) {
       await adoptImage(result.image.id);
     }
@@ -1039,6 +1407,7 @@ const generateVideoForShot = async () => {
     await generateStoryboardVideos(currentPackageId.value, {
       shot_id: currentClip.value.shotId,
       prompt,
+      model_id: selectedVideoModelId.value || undefined,
     });
     await refreshPackage(currentPackageId.value, currentClip.value.shotId);
     isVideoPromptOpen.value = false;
@@ -1061,6 +1430,7 @@ const saveVideoPrompt = async () => {
       shot_id: currentClip.value.shotId,
       prompt,
       force: true,
+      model_id: selectedVideoModelId.value || undefined,
     });
     await refreshPackage(currentPackageId.value, currentClip.value.shotId);
     isEditingVideoPrompt.value = false;
@@ -1088,6 +1458,7 @@ const submitVideoFeedback = async () => {
       shot_id: currentClip.value.shotId,
       feedback,
       force: true,
+      model_id: selectedVideoModelId.value || undefined,
     });
     await refreshPackage(currentPackageId.value, currentClip.value.shotId);
     closeVideoFeedback();
@@ -1109,19 +1480,6 @@ const videoBadgeLabel = (shotId: string) => {
   if (state.status === 'failed') return '失败';
   if (state.status === 'processing') return '视频中';
   return '视频';
-};
-
-const generateAllVideos = async () => {
-  if (!currentPackageId.value || !clips.value.length) return;
-  isBulkGeneratingVideo.value = true;
-  try {
-    await generateStoryboardVideos(currentPackageId.value, {});
-    await refreshPackage(currentPackageId.value);
-  } catch (err) {
-    alert(err instanceof Error ? err.message : '批量生成视频失败');
-  } finally {
-    isBulkGeneratingVideo.value = false;
-  }
 };
 
 const loadEditorData = async () => {
@@ -1149,6 +1507,7 @@ const loadEditorData = async () => {
       currentPackageId.value = null;
       videoState.value = {};
       storyboardError.value = '';
+      clearStoryboardRetry();
       stopPlayback();
       return;
     }
@@ -1157,6 +1516,7 @@ const loadEditorData = async () => {
     const nextClips = buildClipsFromPackage(active);
     clips.value = nextClips;
     buildVideoStateFromPackage(active, nextClips);
+    clearStoryboardRetry();
     await ensureStoryboardImages(active);
     stopPlayback();
     currentShotIndex.value = 0;
@@ -1165,20 +1525,59 @@ const loadEditorData = async () => {
     clips.value = [];
     storyboardError.value = err instanceof Error ? err.message : '素材包加载失败';
     videoState.value = {};
+    clearStoryboardRetry();
   }
 };
+
+watch(
+  () => selectedImageModelId.value,
+  value => {
+    if (value) {
+      sessionStorage.setItem('selectedImageModelId', value);
+    }
+  }
+);
+
+watch(
+  () => selectedVideoModelId.value,
+  value => {
+    if (value) {
+      sessionStorage.setItem('selectedVideoModelId', value);
+    }
+  }
+);
 
 const goBack = () => {
   router.push('/materials');
 };
 
 onMounted(() => {
+  const storedImage = sessionStorage.getItem('selectedImageModelId') || '';
+  const storedVideo = sessionStorage.getItem('selectedVideoModelId') || '';
+  fetchModels('image')
+    .then(items => {
+      imageModels.value = items;
+      pickModel(items, storedImage, 'image');
+    })
+    .catch(() => {
+      imageModels.value = [];
+    });
+  fetchModels('video')
+    .then(items => {
+      videoModels.value = items;
+      pickModel(items, storedVideo, 'video');
+    })
+    .catch(() => {
+      videoModels.value = [];
+    });
   loadEditorData();
 });
 
 onUnmounted(() => {
   stopPlayback();
   stopVideoPolling();
+  stopExportPolling();
+  clearStoryboardRetry();
 });
 </script>
 
@@ -1388,6 +1787,29 @@ onUnmounted(() => {
   color: var(--md-on-surface-variant);
 }
 
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--md-on-surface);
+}
+
+.field-row .label {
+  min-width: 56px;
+  color: var(--md-on-surface-variant);
+}
+
+.model-select {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
 .info-text {
   font-size: 12px;
   color: var(--md-on-surface);
@@ -1443,6 +1865,78 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.export-modal {
+  width: min(520px, 92vw);
+}
+
+.export-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.export-section {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(121, 116, 126, 0.08);
+}
+
+.export-note {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+}
+
+.export-success {
+  font-size: 12px;
+  color: #22c55e;
+}
+
+.export-error {
+  font-size: 12px;
+  color: #f87171;
+}
+
+.export-files {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-file {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(121, 116, 126, 0.12);
+}
+
+.export-file-meta {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  color: var(--md-on-surface);
+}
+
+.text-input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(121, 116, 126, 0.25);
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--md-on-surface);
 }
 
 .modal-title {

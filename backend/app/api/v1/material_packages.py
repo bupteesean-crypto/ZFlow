@@ -13,8 +13,10 @@ from app.repositories import material_packages as package_repo
 from app.repositories import projects as project_repo
 from app.services.blueprint_service import build_blueprint
 from app.services.generation_events import publish_generation_event, reset_generation_events
+from app.services.generation_todo import TODO_LIST
 from app.services.image_service import ImageService
 from app.services.llm_service import LLMService
+from app.services.model_registry import select_enabled_model
 from app.services.video_service import VideoService
 from app.store import new_id, utc_now
 
@@ -50,7 +52,7 @@ _DEFAULT_STORYBOARD_QUALITY_CONSTRAINTS = (
     "consistent style, balanced lighting"
 )
 _CONSTRAINTS_DIR = (
-    Path(__file__).resolve().parents[3] / "worker" / "prompts" / "image" / "constraints"
+    Path(__file__).resolve().parents[4] / "worker" / "prompts" / "image" / "constraints"
 )
 _SCENE_CONSTRAINTS_PATH = _CONSTRAINTS_DIR / "scene_quality.txt"
 _CHARACTER_CONSTRAINTS_PATH = _CONSTRAINTS_DIR / "character_quality.txt"
@@ -190,15 +192,38 @@ def _dedupe_urls(urls: list[str], limit: int) -> list[str]:
     return deduped[:limit]
 
 
-def _emit_step(project_id: str, step: str, status: str, message: str) -> None:
+def _emit_assistant_message(project_id: str, content: str) -> None:
     publish_generation_event(
         project_id,
-        {
-            "type": "generation.step",
-            "step": step,
-            "status": status,
-            "message": message,
-        },
+        {"type": "assistant_message", "content": content},
+    )
+
+
+def _emit_todo_list(project_id: str) -> None:
+    publish_generation_event(
+        project_id,
+        {"type": "todo_list", "items": TODO_LIST},
+    )
+
+
+def _emit_todo_update(project_id: str, item_id: str, status: str) -> None:
+    publish_generation_event(
+        project_id,
+        {"type": "todo_update", "id": item_id, "status": status},
+    )
+
+
+def _emit_content_update(project_id: str, section: str, data: object) -> None:
+    publish_generation_event(
+        project_id,
+        {"type": "content_update", "section": section, "data": data},
+    )
+
+
+def _emit_done(project_id: str, package_id: str | None) -> None:
+    publish_generation_event(
+        project_id,
+        {"type": "done", "package_id": package_id},
     )
 
 
@@ -461,8 +486,11 @@ async def generate_storyboard_images(
 ) -> Dict[str, Any]:
     force = payload.get("force") is True
     size = payload.get("size")
+    model_id = payload.get("model_id")
     if size is not None and not isinstance(size, str):
         raise HTTPException(status_code=400, detail="size must be a string")
+    if model_id is not None and not isinstance(model_id, str):
+        raise HTTPException(status_code=400, detail="model_id must be a string")
     try:
         package = package_repo.get_package(db, package_id)
     except SQLAlchemyError:
@@ -492,6 +520,25 @@ async def generate_storyboard_images(
     images = [image for image in images if isinstance(image, dict)]
     if not size:
         size = metadata.get("image_size") if isinstance(metadata.get("image_size"), str) else None
+    resolved_model_id = None
+    resolved_model = None
+    model_id = model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
+    if model_id:
+        try:
+            spec = select_enabled_model(model_id, "image")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="model_id not available")
+        resolved_model_id = spec.id if spec else None
+        resolved_model = spec.model if spec else None
+    elif isinstance(metadata.get("image_model_id"), str) and metadata.get("image_model_id").strip():
+        stored_id = metadata.get("image_model_id").strip()
+        try:
+            spec = select_enabled_model(stored_id, "image")
+            resolved_model_id = spec.id if spec else None
+            resolved_model = spec.model if spec else None
+        except ValueError:
+            resolved_model_id = None
+            resolved_model = None
     existing_by_shot: dict[str, list[dict]] = {}
     for image in images:
         if image.get("type") != "storyboard":
@@ -551,9 +598,9 @@ async def generate_storyboard_images(
         image_result = None
         try:
             if ref_images:
-                image_result = image_service.generate_image_with_refs(prompt, ref_images, size=size)
+                image_result = image_service.generate_image_with_refs(prompt, ref_images, size=size, model=resolved_model)
             else:
-                image_result = image_service.generate_image(prompt, size=size)
+                image_result = image_service.generate_image(prompt, size=size, model=resolved_model)
         except Exception:
             logger.exception("storyboard image generation failed package_id=%s shot_id=%s", package_id, shot_id)
         if not isinstance(image_result, dict) or not image_result.get("url"):
@@ -575,6 +622,7 @@ async def generate_storyboard_images(
             "prompt_source": "storyboard_autogen",
             "provider": image_result.get("provider"),
             "model": image_result.get("model"),
+            "model_id": resolved_model_id,
             "size": image_result.get("size"),
             "is_active": True,
         }
@@ -583,6 +631,8 @@ async def generate_storyboard_images(
         last_storyboard_url = new_image.get("url") or last_storyboard_url
 
     metadata["images"] = images
+    if resolved_model_id:
+        metadata["image_model_id"] = resolved_model_id
     if size:
         metadata["image_size"] = size
         image_plan = metadata.get("image_plan") if isinstance(metadata.get("image_plan"), dict) else {}
@@ -611,6 +661,7 @@ async def generate_storyboard_videos(
     prompt_override = payload.get("prompt")
     feedback = payload.get("feedback")
     model = payload.get("model")
+    model_id = payload.get("model_id")
     size = payload.get("size")
 
     if shot_id is not None and not isinstance(shot_id, str):
@@ -621,6 +672,8 @@ async def generate_storyboard_videos(
         raise HTTPException(status_code=400, detail="feedback must be a string")
     if model is not None and not isinstance(model, str):
         raise HTTPException(status_code=400, detail="model must be a string")
+    if model_id is not None and not isinstance(model_id, str):
+        raise HTTPException(status_code=400, detail="model_id must be a string")
     if size is not None and not isinstance(size, str):
         raise HTTPException(status_code=400, detail="size must be a string")
     if (prompt_override or feedback) and not (isinstance(shot_id, str) and shot_id.strip()):
@@ -676,6 +729,26 @@ async def generate_storyboard_videos(
 
     generated = []
     skipped = []
+    resolved_model_id = None
+    resolved_model = None
+    model_id = model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
+    if model_id:
+        try:
+            spec = select_enabled_model(model_id, "video")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="model_id not available")
+        resolved_model_id = spec.id if spec else None
+        resolved_model = spec.model if spec else None
+    elif isinstance(metadata.get("video_model_id"), str) and metadata.get("video_model_id").strip():
+        stored_id = metadata.get("video_model_id").strip()
+        try:
+            spec = select_enabled_model(stored_id, "video")
+            resolved_model_id = spec.id if spec else None
+            resolved_model = spec.model if spec else None
+        except ValueError:
+            resolved_model_id = None
+            resolved_model = None
+
     for shot in target_shots:
         shot_key = shot.get("id")
         if not isinstance(shot_key, str) or not shot_key:
@@ -719,7 +792,8 @@ async def generate_storyboard_videos(
 
         video_result = None
         try:
-            video_result = video_service.generate_video_from_image(prompt, [image_url], size=size, model=model)
+            model_override = model or resolved_model
+            video_result = video_service.generate_video_from_image(prompt, [image_url], size=size, model=model_override)
         except Exception:
             logger.exception("storyboard video generation failed package_id=%s shot_id=%s", package_id, shot_key)
         if not isinstance(video_result, dict) or not video_result.get("task_id"):
@@ -742,6 +816,7 @@ async def generate_storyboard_videos(
             "prompt_source": prompt_source,
             "provider": video_result.get("provider"),
             "model": video_result.get("model"),
+            "model_id": resolved_model_id,
             "size": video_result.get("size"),
             "task_id": video_result.get("task_id"),
             "request_id": video_result.get("request_id"),
@@ -753,6 +828,8 @@ async def generate_storyboard_videos(
         generated.append(new_video)
 
     metadata["videos"] = videos
+    if resolved_model_id:
+        metadata["video_model_id"] = resolved_model_id
     materials["metadata"] = metadata
 
     try:
@@ -821,6 +898,10 @@ async def regenerate_from_feedback(
     if not isinstance(feedback, str) or not feedback.strip():
         raise HTTPException(status_code=400, detail="feedback required")
     feedback = feedback.strip()
+    image_model_id = payload.get("image_model_id")
+    if image_model_id is not None and not isinstance(image_model_id, str):
+        raise HTTPException(status_code=400, detail="image_model_id must be a string")
+    image_model_id = image_model_id.strip() if isinstance(image_model_id, str) and image_model_id.strip() else None
 
     try:
         package = package_repo.get_package(db, package_id)
@@ -834,10 +915,11 @@ async def regenerate_from_feedback(
     if not project_id:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    current_step = "outline"
+    current_step = "summary"
     error_sent = False
     reset_generation_events(project_id)
-    _emit_step(project_id, "outline", "started", "正在理解你的修改意见…")
+    _emit_assistant_message(project_id, "我将按以下步骤为你生成素材包，请稍等")
+    _emit_todo_list(project_id)
 
     try:
         items = package_repo.list_packages_for_project(db, project_id)
@@ -862,15 +944,24 @@ async def regenerate_from_feedback(
         mode = "general"
     image_size = metadata.get("image_size") if isinstance(metadata.get("image_size"), str) else None
     image_size = image_size or settings.seedream_default_size or "960x1280"
-    previous_package_context = {
-        "blueprint_v1": previous_blueprint,
-        "summary": metadata.get("summary") if isinstance(metadata, dict) else "",
-        "keywords": metadata.get("keywords") if isinstance(metadata, dict) else [],
-        "art_style": materials.get("art_style") if isinstance(materials, dict) else {},
-        "subjects": materials.get("characters") if isinstance(materials, dict) else [],
-        "scenes": materials.get("scenes") if isinstance(materials, dict) else [],
-        "storyboard": materials.get("storyboards") if isinstance(materials, dict) else [],
-    }
+    resolved_model_id = None
+    resolved_model = None
+    if image_model_id:
+        try:
+            spec = select_enabled_model(image_model_id, "image")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="image_model_id not available")
+        resolved_model_id = spec.id if spec else None
+        resolved_model = spec.model if spec else None
+    elif isinstance(metadata.get("image_model_id"), str) and metadata.get("image_model_id").strip():
+        stored_id = metadata.get("image_model_id").strip()
+        try:
+            spec = select_enabled_model(stored_id, "image")
+            resolved_model_id = spec.id if spec else None
+            resolved_model = spec.model if spec else None
+        except ValueError:
+            resolved_model_id = None
+            resolved_model = None
     logger.info(
         "llm.call stage=material_package_feedback package_id=%s mode=%s feedback_chars=%s",
         package_id,
@@ -878,24 +969,91 @@ async def regenerate_from_feedback(
         len(feedback),
     )
     try:
-        llm_struct = llm_service.generate_material_package(
+        previous_summary = ""
+        if isinstance(previous_blueprint, dict):
+            summary_block = previous_blueprint.get("summary") if isinstance(previous_blueprint.get("summary"), dict) else {}
+            previous_summary = _normalize_text(summary_block.get("logline")) or _normalize_text(
+                summary_block.get("synopsis")
+            )
+        previous_art_style = previous_blueprint.get("art_style") if isinstance(previous_blueprint, dict) else {}
+        previous_subjects = previous_blueprint.get("subjects") if isinstance(previous_blueprint, dict) else []
+        previous_scenes = previous_blueprint.get("scenes") if isinstance(previous_blueprint, dict) else []
+        previous_storyboard = previous_blueprint.get("storyboard") if isinstance(previous_blueprint, dict) else []
+
+        summary, keywords = llm_service.generate_summary(
             str(source_prompt),
             mode,
-            previous_package=previous_package_context,
             feedback=feedback,
+            previous_summary=previous_summary,
         )
+        _emit_todo_update(project_id, "summary", "done")
+        _emit_content_update(project_id, "summary", summary)
+
+        current_step = "art_style"
+        art_style = llm_service.generate_art_style(
+            summary,
+            str(source_prompt),
+            mode,
+            feedback=feedback,
+            previous_art_style=previous_art_style if isinstance(previous_art_style, dict) else {},
+        )
+        _emit_todo_update(project_id, "art_style", "done")
+        _emit_content_update(project_id, "art_style", art_style)
+
+        current_step = "package_name"
+        package_name = llm_service.generate_package_name(summary, art_style)
+        _emit_content_update(project_id, "package_name", package_name)
+
+        current_step = "characters"
+        subjects = llm_service.generate_characters(
+            summary,
+            art_style,
+            str(source_prompt),
+            mode,
+            feedback=feedback,
+            previous_subjects=previous_subjects if isinstance(previous_subjects, list) else [],
+        )
+        _emit_todo_update(project_id, "characters", "done")
+        _emit_content_update(project_id, "characters", subjects)
+
+        current_step = "scenes"
+        scenes = llm_service.generate_scenes(
+            summary,
+            art_style,
+            subjects,
+            str(source_prompt),
+            mode,
+            feedback=feedback,
+            previous_scenes=previous_scenes if isinstance(previous_scenes, list) else [],
+        )
+        _emit_todo_update(project_id, "scenes", "done")
+        _emit_content_update(project_id, "scenes", scenes)
+
+        current_step = "storyboard"
+        storyboard = llm_service.generate_storyboard(
+            summary,
+            art_style,
+            subjects,
+            scenes,
+            str(source_prompt),
+            mode,
+            feedback=feedback,
+            previous_storyboard=previous_storyboard if isinstance(previous_storyboard, list) else [],
+        )
+        _emit_todo_update(project_id, "storyboard", "done")
+        _emit_content_update(project_id, "storyboard", storyboard)
+
+        llm_struct = {
+            "summary": summary,
+            "keywords": keywords,
+            "art_style": art_style,
+            "subjects": subjects,
+            "scenes": scenes,
+            "storyboard": storyboard,
+        }
         blueprint = build_blueprint(llm_struct, source_prompt=str(source_prompt))
 
-        _emit_step(project_id, "outline", "completed", "故事梗概已完成")
-        current_step = "outline"
-        _emit_step(project_id, "art_style", "completed", "美术风格已确定")
-        current_step = "art_style"
-        _emit_step(project_id, "characters", "completed", "角色设定已完成")
-        current_step = "characters"
-
         images: list[dict] = []
-        _emit_step(project_id, "character_images", "started", "正在生成角色三视图…")
-        current_step = "character_images"
         for subject in blueprint.get("subjects", []):
             subject_id = subject.get("id")
             subject_name = subject.get("name")
@@ -910,7 +1068,7 @@ async def regenerate_from_feedback(
                 sheet_prompt = _build_character_sheet_prompt(subject, blueprint) or blueprint["summary"]["logline"]
             image_result = None
             try:
-                image_result = image_service.generate_image(sheet_prompt, size=image_size)
+                image_result = image_service.generate_image(sheet_prompt, size=image_size, model=resolved_model)
             except Exception:
                 logger.exception(
                     "generation stage=character_sheet failed package_id=%s subject_id=%s",
@@ -931,16 +1089,11 @@ async def regenerate_from_feedback(
                     "prompt_parts": prompt_parts,
                     "provider": image_result.get("provider"),
                     "model": image_result.get("model"),
+                    "model_id": resolved_model_id,
                     "size": image_result.get("size"),
                 }
             )
-        _emit_step(project_id, "character_images", "completed", "角色三视图已生成")
-        current_step = "character_images"
 
-        _emit_step(project_id, "scenes", "completed", "场景设定已完成")
-        current_step = "scenes"
-        _emit_step(project_id, "scene_images", "started", "正在生成场景空间图…")
-        current_step = "scene_images"
         for scene in blueprint.get("scenes", []):
             scene_id = scene.get("id")
             base_prompt = scene.get("image_prompt") if isinstance(scene.get("image_prompt"), str) else ""
@@ -954,7 +1107,7 @@ async def regenerate_from_feedback(
                 scene_prompt = scene.get("prompt_hint") or scene.get("description") or blueprint["summary"]["logline"]
             image_result = None
             try:
-                image_result = image_service.generate_image(scene_prompt, size=image_size)
+                image_result = image_service.generate_image(scene_prompt, size=image_size, model=resolved_model)
             except Exception:
                 image_result = None
             if isinstance(image_result, dict) and image_result.get("url"):
@@ -972,19 +1125,10 @@ async def regenerate_from_feedback(
                         },
                         "provider": image_result.get("provider"),
                         "model": image_result.get("model"),
+                        "model_id": resolved_model_id,
                         "size": image_result.get("size"),
                     }
                 )
-        _emit_step(project_id, "scene_images", "completed", "场景空间图已生成")
-        current_step = "scene_images"
-
-        _emit_step(project_id, "storyboard", "completed", "分镜剧本已完成")
-        current_step = "storyboard"
-
-        package_name = llm_service.generate_package_name(
-            str(source_prompt),
-            blueprint["summary"]["logline"],
-        )
         image_size = metadata.get("image_size") if isinstance(metadata.get("image_size"), str) else None
         image_size = image_size or settings.seedream_default_size or "960x1280"
         materials_payload = {
@@ -1010,6 +1154,7 @@ async def regenerate_from_feedback(
                 "user_prompt": str(source_prompt),
                 "user_feedback": feedback,
                 "generation_mode": mode,
+                "image_model_id": resolved_model_id,
             },
             "art_style": {
                 "style_name": blueprint.get("art_style", {}).get("style_name", ""),
@@ -1034,7 +1179,7 @@ async def regenerate_from_feedback(
             project_id,
             {"last_material_package_id": new_package["id"]},
         )
-        _emit_step(project_id, "done", "completed", "素材包已生成")
+        _emit_done(project_id, new_package["id"])
         current_step = "done"
         return ok(new_package)
     except HTTPException:

@@ -45,9 +45,13 @@ export async function fetchMaterialPackage(packageId: string): Promise<MaterialP
 
 export async function submitMaterialPackageFeedback(
   packageId: string,
-  feedback: string
+  feedback: string,
+  imageModelId?: string
 ): Promise<MaterialPackage> {
-  const payload = { feedback };
+  const payload: { feedback: string; image_model_id?: string } = { feedback };
+  if (imageModelId) {
+    payload.image_model_id = imageModelId;
+  }
   const { data } = await request.post<ApiResponse<MaterialPackage>>(
     `/material-packages/${packageId}/feedback`,
     payload
@@ -60,9 +64,13 @@ export async function submitMaterialPackageFeedback(
 
 export async function generateStoryboardImages(
   packageId: string,
-  force = false
+  force = false,
+  modelId?: string
 ): Promise<{ generated: unknown[]; material_package_id: string }> {
-  const payload = { force };
+  const payload: { force: boolean; model_id?: string } = { force };
+  if (modelId) {
+    payload.model_id = modelId;
+  }
   const { data } = await request.post<ApiResponse<{ generated: unknown[]; material_package_id: string }>>(
     `/material-packages/${packageId}/storyboard-images`,
     payload
@@ -81,6 +89,7 @@ export async function generateStoryboardVideos(
     feedback?: string;
     force?: boolean;
     model?: string;
+    model_id?: string;
     size?: string;
   } = {}
 ): Promise<{ generated: unknown[]; skipped?: unknown[]; material_package_id: string }> {

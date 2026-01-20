@@ -50,6 +50,8 @@ class Settings:
     runway_api_key: str = os.getenv("RUNWAY_API_KEY", "")
     pika_api_key: str = os.getenv("PIKA_API_KEY", "")
     sora_api_key: str = os.getenv("SORA_API_KEY", "")
+    image_model_allowlist: str = os.getenv("IMAGE_MODEL_ALLOWLIST", "")
+    video_model_allowlist: str = os.getenv("VIDEO_MODEL_ALLOWLIST", "")
 
 
 settings = Settings()

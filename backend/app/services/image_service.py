@@ -43,24 +43,24 @@ class ImageService:
         self._provider = settings.image_provider
         self._prompt_template = self._load_prompt_template()
 
-    def generate_image(self, prompt: str, size: str | None = None) -> dict:
+    def generate_image(self, prompt: str, size: str | None = None, model: str | None = None) -> dict:
         provider = normalize_provider(self._provider)
         if not provider or provider == "mock":
-            return self._mock_output(prompt, size)
+            return self._mock_output(prompt, size, model)
         if provider == "seedream":
-            result = self.generate_seedream_image(prompt, size=size)
+            result = self.generate_seedream_image(prompt, size=size, model=model)
         else:
             logger.warning("Image provider %s not implemented; using mock output", provider)
-            result = self._mock_output(prompt, size)
+            result = self._mock_output(prompt, size, model)
         if not result.get("url"):
             logger.warning("Image generation returned no url; falling back to mock output")
-            return self._mock_output(prompt)
+            return self._mock_output(prompt, size, model)
         return result
 
-    def _mock_output(self, prompt: str, size: str | None = None) -> dict:
+    def _mock_output(self, prompt: str, size: str | None = None, model: str | None = None) -> dict:
         return {
             "provider": "mock",
-            "model": None,
+            "model": model,
             "url": MOCK_IMAGE_URL,
             "size": size or "1x1",
             "prompt": (prompt or "").strip(),
@@ -238,8 +238,8 @@ class ImageService:
         prompt = prompt.replace("{{keywords}}", keywords_text)
         return prompt.strip()
 
-    def generate_seedream_image(self, prompt: str, size: str | None = None) -> dict:
-        model = settings.seedream_model or "doubao-seedream-4.0"
+    def generate_seedream_image(self, prompt: str, size: str | None = None, model: str | None = None) -> dict:
+        model = model or settings.seedream_model or "doubao-seedream-4.0"
         cleaned_prompt = (prompt or "").strip()
         requested_size = size or settings.seedream_default_size or "2K"
         prompt_with_size = self._apply_size_hint(cleaned_prompt, requested_size)
@@ -262,7 +262,7 @@ class ImageService:
     ) -> dict:
         provider = normalize_provider(self._provider)
         if not provider or provider != "seedream":
-            return self.generate_image(prompt, size=size)
+            return self.generate_image(prompt, size=size, model=model)
 
         cleaned_prompt = (prompt or "").strip()
         ref_images = []
