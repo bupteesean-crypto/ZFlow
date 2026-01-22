@@ -44,9 +44,9 @@ const statusClass = computed(() => {
 }
 
 .status-badge--pending {
-  background: rgba(255, 255, 255, 0.05);
-  color: #9aa8c7;
-  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(148, 163, 184, 0.08);
+  color: #cbd5f5;
+  border-color: rgba(148, 163, 184, 0.2);
 }
 
 .status-badge--loading {
@@ -57,9 +57,9 @@ const statusClass = computed(() => {
 
 .status-badge--done,
 .status-badge--ready {
-  background: rgba(108, 249, 224, 0.12);
-  color: #9cfbe6;
-  border-color: rgba(108, 249, 224, 0.35);
+  background: rgba(var(--md-accent-rgb), 0.12);
+  color: #b8f4ff;
+  border-color: rgba(var(--md-accent-rgb), 0.35);
 }
 
 .status-badge--fail {
@@ -75,8 +75,8 @@ const statusClass = computed(() => {
 }
 
 .status-badge--exported {
-  background: rgba(99, 102, 241, 0.15);
-  color: #c7d2fe;
-  border-color: rgba(99, 102, 241, 0.35);
+  background: rgba(var(--md-accent-2-rgb), 0.18);
+  color: #a7f3d0;
+  border-color: rgba(var(--md-accent-2-rgb), 0.35);
 }
 </style>

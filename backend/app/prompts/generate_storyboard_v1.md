@@ -22,6 +22,10 @@
 - scenes: 已生成的场景设定
 - previous_storyboard: 可选，上一版分镜脚本
 - feedback: 可选，用户修改意见
+- documents: 可选，用户提供的约束
+- input_config: 可选，输入阶段的配置（画幅/时长/节奏）
+
+如果 input_config.duration_sec 提供了时长，请在镜头数量与 duration_sec 分配上保持合理节奏。
 
 如果有 feedback，把它当作改进指令，基于上一版优化。
 只返回 JSON，不要 Markdown，不要额外说明。

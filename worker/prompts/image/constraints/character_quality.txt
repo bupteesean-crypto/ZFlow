@@ -1,8 +1,10 @@
-no text, no captions, no logos, no watermark
-avoid low-quality artifacts or distortion
-avoid malformed anatomy or extra limbs
-front view, side view, back view in one canvas
-front shows face and torso, side shows profile silhouette, back shows hair and back details
-evenly spaced, same scale and proportions
-consistent line weight and lighting
-neutral background
+生成同一个角色的三视图角色设定图（turnaround / model sheet）
+画面必须同时包含正面视图 / 侧面视图 / 背面视图，横向并排展示
+角色一致性要求：五官一致，发型一致，服装款式一致，颜色一致，身材比例一致
+标准站立中立姿态（neutral pose），双脚自然站立，身体直立，无动作、无夸张姿势
+正交视图（orthographic view），不允许透视，不允许镜头角度变化，仅正面 / 侧面 / 背面三种视角
+均匀棚拍光照，无强阴影，无戏剧化光影
+纯白色或浅灰色背景，无场景、无道具、无装饰
+高细节，线条清晰，轮廓明确，适合作为角色参考设定图
+强约束：禁止改变服装，禁止改变颜色，禁止增加动作，禁止透视，禁止生成多个人物
+禁止文字、水印、Logo、字幕

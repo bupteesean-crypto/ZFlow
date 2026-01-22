@@ -26,78 +26,228 @@
           <textarea
             ref="textareaRef"
             v-model="prompt"
-            placeholder="描述你想创作的视频，例如：北京的田园生活，Q版角色在微缩景观中..."
+            placeholder="输入你想要生成的视频描述，例如：一个女孩在海边散步，阳光明媚"
             @focus="handleFocus"
             @blur="handleBlur"
             @input="handleInput"
           />
-          <button class="entry-submit" @click="handleSubmit">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-            </svg>
+          <button class="entry-submit" :disabled="!canSubmit" @click="handleSubmit">
+            {{ submitLabel }}
           </button>
         </div>
 
         <div v-if="isExpanded" class="entry-extra">
           <div class="helper-row">
-            <span :class="['count', countClass]">{{ prompt.length }} / 2000</span>
-            <span class="mode-hint">按 Enter 换行，Shift + Enter 发送</span>
+            <span :class="['count', countClass]">{{ prompt.length }} / {{ maxPromptLength }}</span>
+            <span class="mode-hint">{{ countHint }}</span>
           </div>
 
-          <div class="input-actions">
-            <button v-if="canUseImage" title="上传参考图" @click="handleUploadImage">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <path d="M21 15l-5-5L5 21" />
-              </svg>
-            </button>
-            <button title="选择模型" @click="showModelSelector = !showModelSelector">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="4" y1="6" x2="20" y2="6" />
-                <line x1="4" y1="12" x2="20" y2="12" />
-                <line x1="4" y1="18" x2="20" y2="18" />
-                <circle cx="9" cy="6" r="2" />
-                <circle cx="15" cy="12" r="2" />
-                <circle cx="11" cy="18" r="2" />
-              </svg>
-            </button>
-            <span class="action-label">高级选项</span>
+          <div v-if="mode === 'general'" class="input-actions">
+            <span class="action-label">一句话描述即可生成完整素材包</span>
+          </div>
+
+          <div v-else class="pro-config">
+            <div class="config-block">
+              <div class="config-title">附件导入</div>
+              <div class="config-hint">先上传素材，再选择用途，系统会据此优化生成。</div>
+              <div class="upload-box" @click="triggerFileSelect" @dragover.prevent @drop.prevent="handleDrop">
+                <input ref="fileInputRef" type="file" multiple class="file-input" @change="handleFileChange" />
+                <div class="upload-text">拖拽或点击上传素材</div>
+                <div class="upload-hint">支持图片/音频/视频/PDF/Word/TXT，单文件建议 &lt; 50MB</div>
+              </div>
+              <div v-if="attachments.length" class="upload-actions">
+                <button class="btn-ghost small" @click="applyRecommendedBindings">一键套用推荐</button>
+                <button class="btn-ghost small" @click="bindAllImagesAsCharacter">图片全部绑定为角色参考</button>
+                <div class="upload-batch">
+                  <input
+                    v-model="batchLabel"
+                    class="config-input compact"
+                    placeholder="批量备注（如：角色参考）"
+                  />
+                  <button class="btn-ghost small" @click="applyBatchLabel">应用备注</button>
+                </div>
+              </div>
+              <div v-if="hasUnboundAttachments" class="upload-reminder">请为每个附件选择用途，未绑定的文件不会参与生成。</div>
+              <div v-if="attachments.length" class="upload-list">
+                <div v-for="item in attachments" :key="item.localId" class="upload-item">
+                  <div class="upload-info">
+                    <div class="upload-name">{{ item.name }}</div>
+                    <div class="upload-meta">{{ formatFileMeta(item) }}</div>
+                    <div v-if="item.error" class="upload-error">{{ item.error }}</div>
+                  </div>
+                  <div class="upload-controls">
+                    <select v-model="item.bindType" class="config-select" @change="syncAttachment(item)">
+                      <option value="">未绑定</option>
+                      <option value="character">角色参考</option>
+                      <option value="scene">场景参考</option>
+                      <option value="storyboard">分镜大纲</option>
+                      <option value="script">剧本</option>
+                      <option value="audio">旁白/音效</option>
+                      <option value="other">其他</option>
+                    </select>
+                    <input
+                      v-model="item.label"
+                      class="config-input"
+                      placeholder="用途/备注（如：角色形象参考）"
+                      @blur="syncAttachment(item)"
+                    />
+                  </div>
+                  <div class="upload-recommend">
+                    <span class="recommend-text">
+                      推荐用途：{{ bindTypeLabel(getRecommendedBindType(item)) }}
+                      <span v-if="!item.bindType" class="recommend-warn">未绑定</span>
+                    </span>
+                    <button class="btn-ghost small" @click="applyRecommendedBinding(item)">套用推荐</button>
+                  </div>
+                  <div class="upload-progress" v-if="item.status === 'uploading'">
+                    <div class="upload-progress-bar" :style="{ width: item.progress + '%' }"></div>
+                  </div>
+                  <div v-else class="upload-status">
+                    <span :class="['status-pill', item.status === 'failed' ? 'danger' : 'ok']">
+                      {{ item.status === 'failed' ? '上传失败' : '上传完成' }}
+                    </span>
+                    <span class="status-divider">｜</span>
+                    <span class="status-parse">解析：{{ item.parseStatusLabel }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="config-advanced-toggle">
+              <button class="btn-ghost" @click="showAdvanced = !showAdvanced">
+                {{ showAdvanced ? '收起高级配置' : '下一步：完善配置' }}
+              </button>
+              <span class="advanced-hint">包含模型、主体、风格、画幅、时长</span>
+            </div>
+
+            <div v-if="showAdvanced" class="config-advanced">
+              <div class="config-block">
+                <div class="config-title">模型选择</div>
+                <div class="model-columns">
+                  <div class="model-column">
+                    <div class="model-column-title">文生图模型</div>
+                    <div class="model-chip-group">
+                      <button
+                        v-for="model in imageModels"
+                        :key="`txt-${model.id}`"
+                        :class="['model-chip', { active: selectedModels.image === model.id, disabled: !model.enabled }]"
+                        :disabled="!model.enabled"
+                        @click="selectImageModel(model.id)"
+                      >
+                        {{ model.label }}
+                      </button>
+                      <span v-if="imageModels.length === 0" class="model-empty">暂无模型</span>
+                    </div>
+                  </div>
+                  <div class="model-column">
+                    <div class="model-column-title">图文生图模型</div>
+                    <div class="model-chip-group">
+                      <button
+                        v-for="model in imageModels"
+                        :key="`ref-${model.id}`"
+                        :class="['model-chip', { active: selectedModels.imageRef === model.id, disabled: !model.enabled }]"
+                        :disabled="!model.enabled"
+                        @click="selectImageRefModel(model.id)"
+                      >
+                        {{ model.label }}
+                      </button>
+                      <span v-if="imageModels.length === 0" class="model-empty">暂无模型</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="config-block">
+                <div class="config-title">主体设定</div>
+                <div class="subject-input-grid">
+                  <input v-model="subjectNameInput" class="config-input" placeholder="主体名称（如：女孩 / 小猪）" />
+                  <input v-model="subjectDescInput" class="config-input" placeholder="一句话描述（可选）" />
+                  <button class="btn-ghost" @click="addSubjectItem">添加</button>
+                </div>
+                <div v-if="suggestedSubjects.length" class="subject-suggest">
+                  <div class="suggest-header">
+                    <span>来自角色参考：</span>
+                    <button class="btn-ghost small" @click="addAllSuggestedSubjects">生成主体列表</button>
+                  </div>
+                  <div class="subject-suggest-list">
+                    <button
+                      v-for="name in suggestedSubjects"
+                      :key="name"
+                      class="subject-suggest-chip"
+                      @click="addSuggestedSubject(name)"
+                    >
+                      + {{ name }}
+                    </button>
+                  </div>
+                </div>
+                <div v-if="subjectItems.length" class="subject-list">
+                  <div v-for="(item, index) in subjectItems" :key="`${item.name}-${index}`" class="subject-item">
+                    <div class="subject-text">
+                      <div class="subject-main">{{ item.name }}</div>
+                      <div class="subject-desc">{{ item.description || '未填写描述' }}</div>
+                    </div>
+                    <button class="chip-remove" @click="removeSubjectItem(index)">移除</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="config-block">
+                <div class="config-title">选择风格</div>
+                <div class="style-row">
+                  <button class="btn-ghost" @click="showStyleSelector = true">
+                    {{ selectedStyle?.name || '选择风格' }}
+                  </button>
+                  <input v-model="customStyle" class="config-input" placeholder="自定义风格名称（可选）" />
+                </div>
+              </div>
+
+              <div class="config-block config-grid">
+                <div>
+                  <div class="config-title">画幅</div>
+                  <select v-model="aspectRatio" class="config-select">
+                    <option v-for="option in aspectOptions" :key="option.value" :value="option.value">
+                      {{ option.label }}
+                    </option>
+                  </select>
+                </div>
+                <div>
+                  <div class="config-title">时长</div>
+                  <select v-model="durationPreset" class="config-select">
+                    <option v-for="option in durationOptions" :key="option.value" :value="option.value">
+                      {{ option.label }}
+                    </option>
+                  </select>
+                  <div v-if="durationPreset === 'custom'" class="duration-custom">
+                    <input v-model="durationCustom.h" class="config-input small" placeholder="小时" />
+                    <input v-model="durationCustom.m" class="config-input small" placeholder="分钟" />
+                    <input v-model="durationCustom.s" class="config-input small" placeholder="秒" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="config-preview">
+                当前画幅：{{ aspectRatio }} ｜ 时长：{{ durationLabel }}
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Model Selector Popover -->
-      <div v-if="showModelSelector" class="model-selector-popover">
-        <div class="model-selector-tabs">
-          <button
-            v-for="tab in modelTabs"
-            :key="tab.id"
-            :class="['model-selector-tab', { active: activeModelTab === tab.id }]"
-            @click="activeModelTab = tab.id"
-          >
-            {{ tab.name }}
-          </button>
+      <div v-if="showStyleSelector" class="style-selector-popover">
+        <div class="style-selector-header">
+          <div class="style-selector-title">选择风格</div>
+          <button class="btn-ghost" @click="showStyleSelector = false">关闭</button>
         </div>
-        <div class="model-selector-list">
-            <button
-              v-for="model in currentModels"
-              :key="model.id"
-              :class="[
-                'model-selector-item',
-                { active: currentSelectedModel === model.id, disabled: !model.enabled },
-              ]"
-              :disabled="!model.enabled"
-              @click="selectModel(model)"
-            >
-              <span>{{ model.label }}</span>
-              <span class="model-tag">{{ model.enabled ? '可用' : '未启用' }}</span>
-            </button>
-            <div v-if="currentModels.length === 0" class="model-empty">暂无可选模型</div>
-          </div>
-        <div class="model-selector-actions">
-          <button class="btn-ghost" @click="showModelSelector = false">取消</button>
-          <button class="btn-primary" @click="showModelSelector = false">确定</button>
+        <div class="style-grid">
+          <button
+            v-for="style in styleOptions"
+            :key="style.id"
+            :class="['style-card', { active: selectedStyle?.id === style.id }]"
+            @click="pickStyle(style)"
+          >
+            <span class="style-swatch" :style="{ background: style.preview }"></span>
+            <span>{{ style.name }}</span>
+          </button>
         </div>
       </div>
     </section>
@@ -141,12 +291,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast';
-import { createProject } from '@/api/projects';
+import { createProject, updateProject } from '@/api/projects';
 import { startGeneration } from '@/api/generation';
 import { fetchModels, type ModelOption } from '@/api/models';
+import { uploadAttachment, updateAttachment, type AttachmentItem } from '@/api/attachments';
 
 interface TodoItem {
   title: string;
@@ -170,30 +321,41 @@ const isExpanded = ref(false);
 const isMinimal = ref(true);
 const isShrunk = ref(false);
 const mode = ref<'general' | 'pro'>('general');
-const canUseImage = ref(true);
 const generating = ref(false);
-const showModelSelector = ref(false);
-const activeModelTab = ref<'video' | 'image'>('image');
 const imageModels = ref<ModelOption[]>([]);
-const videoModels = ref<ModelOption[]>([]);
-const selectedModels = ref<{ image: string; video: string }>({ image: '', video: '' });
-
-const modelTabs = [
-  { id: 'video', name: '视频生成' },
-  { id: 'image', name: '图像生成' },
-];
-
-const currentModels = computed(() => {
-  if (activeModelTab.value === 'video') return videoModels.value;
-  if (activeModelTab.value === 'image') return imageModels.value;
-  return [];
+const selectedModels = ref<{ image: string; imageRef: string; video: string }>({
+  image: '',
+  imageRef: '',
+  video: '',
 });
-
-const currentSelectedModel = computed(() => {
-  if (activeModelTab.value === 'video') return selectedModels.value.video;
-  if (activeModelTab.value === 'image') return selectedModels.value.image;
-  return '';
-});
+const maxPromptLength = 10000;
+const minPromptLength = 3;
+const draftProjectId = ref<string | null>(null);
+const fileInputRef = ref<HTMLInputElement | null>(null);
+const attachments = ref<
+  Array<
+    AttachmentItem & {
+      localId: string;
+      name: string;
+      progress: number;
+      status: 'ready' | 'uploading' | 'failed';
+      error?: string;
+      bindType?: string;
+      label?: string;
+      parseStatusLabel: string;
+    }
+  >
+>([]);
+const showAdvanced = ref(false);
+const batchLabel = ref('');
+const subjectNameInput = ref('');
+const subjectDescInput = ref('');
+const subjectItems = ref<Array<{ name: string; description: string }>>([]);
+const showStyleSelector = ref(false);
+const customStyle = ref('');
+const aspectRatio = ref('3:4');
+const durationPreset = ref('auto');
+const durationCustom = ref({ h: '', m: '', s: '' });
 
 const inspirationCards: InspirationCard[] = [
   {
@@ -236,9 +398,77 @@ const todoItems = ref<TodoItem[]>([
 
 const countClass = computed(() => {
   const len = prompt.value.length;
-  if (len > 1800) return 'count-error';
-  if (len > 1500) return 'count-warn';
-  return 'count-ok';
+  if (len > maxPromptLength) return 'count-error';
+  if (len > maxPromptLength * 0.9) return 'count-warn';
+  return len >= minPromptLength ? 'count-ok' : 'count-warn';
+});
+
+const countHint = computed(() => {
+  const len = prompt.value.length;
+  if (len < minPromptLength) {
+    return `至少输入 ${minPromptLength} 字`;
+  }
+  if (len > maxPromptLength) {
+    return '字数超出上限，请精简';
+  }
+  return '按 Enter 换行';
+});
+
+const canSubmit = computed(() => {
+  const len = prompt.value.trim().length;
+  return len >= minPromptLength && len <= maxPromptLength && !generating.value;
+});
+
+const submitLabel = computed(() => {
+  if (generating.value) return '提交中...';
+  return mode.value === 'pro' ? '开始创作' : '自动生成';
+});
+
+const styleOptions = [
+  { id: 'popmart', name: '泡泡玛特', preview: 'linear-gradient(135deg, #ffd6e8, #ffe5f2)' },
+  { id: 'animal', name: '动森风格', preview: 'linear-gradient(135deg, #bfe6c9, #e8f5d0)' },
+  { id: 'toon3d', name: '卡通 3D', preview: 'linear-gradient(135deg, #c7d2ff, #f0d4ff)' },
+  { id: 'disney', name: '迪士尼', preview: 'linear-gradient(135deg, #ffe0b2, #ffd180)' },
+  { id: 'lego', name: '乐高风格', preview: 'linear-gradient(135deg, #ffec99, #ffd43b)' },
+  { id: 'lowpoly', name: '低模风格', preview: 'linear-gradient(135deg, #d3f9d8, #b2f2bb)' },
+  { id: 'ghibli', name: '吉卜力', preview: 'linear-gradient(135deg, #d0ebff, #a5d8ff)' },
+  { id: 'live', name: '真人摄影', preview: 'linear-gradient(135deg, #e9ecef, #ced4da)' },
+  { id: 'clay', name: '黏土风格', preview: 'linear-gradient(135deg, #ffe8cc, #ffd8a8)' },
+  { id: 'snoopy', name: '史努比', preview: 'linear-gradient(135deg, #f1f3f5, #dee2e6)' },
+  { id: 'line', name: '线性插画', preview: 'linear-gradient(135deg, #f8f9fa, #e9ecef)' },
+];
+const selectedStyle = ref<{ id: string; name: string; preview: string } | null>(null);
+
+const aspectOptions = [
+  { value: '16:9', label: '16:9（自然日常）' },
+  { value: '4:3', label: '4:3（复古学院）' },
+  { value: '2.35:1', label: '2.35:1（影院宽屏）' },
+  { value: '19:16', label: '19:16（竖屏亲近）' },
+  { value: '3:4', label: '3:4（默认）' },
+];
+
+const durationOptions = [
+  { value: 'auto', label: '智能' },
+  { value: '5', label: '5 秒' },
+  { value: '10', label: '10 秒' },
+  { value: '15', label: '15 秒' },
+  { value: '20', label: '20 秒' },
+  { value: '30', label: '30 秒' },
+  { value: '45', label: '45 秒' },
+  { value: '60', label: '60 秒' },
+  { value: 'custom', label: '自定义' },
+];
+
+const durationLabel = computed(() => {
+  if (durationPreset.value === 'auto') return '智能';
+  if (durationPreset.value === 'custom') {
+    const seconds = resolveDurationSeconds();
+    if (!seconds) return '自定义';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return mins > 0 ? `${mins}分${secs}秒` : `${secs}秒`;
+  }
+  return `${durationPreset.value}秒`;
 });
 
 const handleFocus = () => {
@@ -249,7 +479,7 @@ const handleFocus = () => {
 const handleBlur = (e: FocusEvent) => {
   // Keep expanded if clicking inside the entry shell
   const target = e.relatedTarget as HTMLElement;
-  if (target?.closest('.entry-shell')) return;
+  if (target?.closest('.entry-shell') || target?.closest('.style-selector-popover')) return;
   if (prompt.value.length === 0) {
     isMinimal.value = true;
   }
@@ -264,57 +494,375 @@ const handleInput = () => {
   }
 };
 
+const resolveDurationSeconds = () => {
+  if (durationPreset.value !== 'custom') {
+    const seconds = Number(durationPreset.value);
+    return Number.isFinite(seconds) ? seconds : 0;
+  }
+  const h = Number(durationCustom.value.h || 0);
+  const m = Number(durationCustom.value.m || 0);
+  const s = Number(durationCustom.value.s || 0);
+  if (!Number.isFinite(h) || !Number.isFinite(m) || !Number.isFinite(s)) {
+    return 0;
+  }
+  if (m >= 60 || s >= 60) {
+    return 0;
+  }
+  return Math.max(0, Math.floor(h * 3600 + m * 60 + s));
+};
+
+const buildInputConfig = () => {
+  const durationSec = durationPreset.value === 'auto' ? null : resolveDurationSeconds();
+  const subjects = subjectItems.value
+    .map(item => ({
+      name: item.name.trim(),
+      description: item.description.trim(),
+    }))
+    .filter(item => item.name);
+  return {
+    aspect_ratio: aspectRatio.value,
+    duration_sec: durationSec || undefined,
+    style_name: customStyle.value.trim() || selectedStyle.value?.name || '',
+    subject_seeds: subjects.map(item => item.name),
+    subjects,
+    image_model_id: selectedModels.value.image || '',
+    image_ref_model_id: selectedModels.value.imageRef || '',
+  };
+};
+
+const buildDocumentsPayload = () => {
+  return attachments.value
+    .filter(item => item.status === 'ready' && item.id)
+    .map(item => ({
+      id: item.id,
+      name: item.filename || item.name,
+      category: item.category,
+      content_type: item.content_type,
+      url: item.url,
+      label: item.label || '',
+      bind_type: item.bindType || '',
+      tags: item.tags || [],
+      parsed_text: item.parsed_text || '',
+    }));
+};
+
+const formatFileMeta = (item: AttachmentItem & { name: string; parseStatusLabel: string }) => {
+  const sizeMb = item.size ? `${(item.size / (1024 * 1024)).toFixed(1)} MB` : '未知大小';
+  const categoryMap: Record<string, string> = {
+    image: '图片',
+    audio: '音频',
+    video: '视频',
+    document: '文档',
+  };
+  const categoryLabel = categoryMap[item.category || ''] || '文件';
+  return `${categoryLabel} · ${sizeMb}`;
+};
+
+const bindTypeLabel = (value: string) => {
+  const map: Record<string, string> = {
+    character: '角色参考',
+    scene: '场景参考',
+    storyboard: '分镜大纲',
+    script: '剧本',
+    audio: '旁白/音效',
+    other: '其他',
+  };
+  return map[value] || '未绑定';
+};
+
+const getRecommendedBindType = (item: { name?: string; filename?: string; category?: string }) => {
+  const rawName = (item.filename || item.name || '').toLowerCase();
+  const name = rawName.replace(/\s+/g, '');
+  if (item.category === 'audio') return 'audio';
+  if (item.category === 'video') return 'storyboard';
+  if (item.category === 'document') {
+    if (name.includes('分镜') || name.includes('storyboard')) return 'storyboard';
+    if (name.includes('剧本') || name.includes('script')) return 'script';
+    if (name.includes('场景') || name.includes('scene')) return 'scene';
+    return 'script';
+  }
+  if (item.category === 'image') {
+    if (name.includes('场景') || name.includes('背景') || name.includes('scene') || name.includes('bg')) return 'scene';
+    if (name.includes('角色') || name.includes('人物') || name.includes('人设') || name.includes('character')) {
+      return 'character';
+    }
+    return 'character';
+  }
+  return 'other';
+};
+
+const applyRecommendedBinding = async (item: any) => {
+  const recommended = getRecommendedBindType(item);
+  item.bindType = recommended;
+  await syncAttachment(item);
+};
+
+const applyRecommendedBindings = async () => {
+  const pending = attachments.value.filter(item => item.status === 'ready' && item.id);
+  for (const item of pending) {
+    if (!item.bindType) {
+      item.bindType = getRecommendedBindType(item);
+    }
+  }
+  await Promise.all(pending.map(item => syncAttachment(item)));
+};
+
+const bindAllImagesAsCharacter = async () => {
+  const pending = attachments.value.filter(item => item.status === 'ready' && item.category === 'image' && item.id);
+  for (const item of pending) {
+    item.bindType = 'character';
+  }
+  await Promise.all(pending.map(item => syncAttachment(item)));
+};
+
+const applyBatchLabel = async () => {
+  const label = batchLabel.value.trim();
+  if (!label) return;
+  const pending = attachments.value.filter(item => item.status === 'ready' && item.id);
+  for (const item of pending) {
+    item.label = label;
+  }
+  await Promise.all(pending.map(item => syncAttachment(item)));
+  batchLabel.value = '';
+};
+
+const extractSubjectName = (filename: string) => {
+  const base = filename.replace(/\.[^/.]+$/, '');
+  return base.replace(/[_\-]/g, ' ').replace(/\d+/g, '').trim();
+};
+
+const suggestedSubjects = computed(() => {
+  const names = new Set<string>();
+  attachments.value.forEach(item => {
+    const bindType = item.bindType || getRecommendedBindType(item);
+    if (bindType !== 'character') return;
+    const filename = item.filename || item.name || '';
+    const name = extractSubjectName(filename);
+    if (name) names.add(name);
+  });
+  const existing = new Set(subjectItems.value.map(item => item.name.trim()).filter(Boolean));
+  return Array.from(names).filter(name => !existing.has(name));
+});
+
+const hasUnboundAttachments = computed(() => {
+  return attachments.value.some(item => item.status === 'ready' && item.id && !item.bindType);
+});
+
+const addSuggestedSubject = (name: string) => {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  subjectItems.value.push({ name: trimmed, description: '' });
+};
+
+const addAllSuggestedSubjects = () => {
+  suggestedSubjects.value.forEach(name => addSuggestedSubject(name));
+};
+
+const addSubjectItem = () => {
+  const name = subjectNameInput.value.trim();
+  if (!name) return;
+  subjectItems.value.push({ name, description: subjectDescInput.value.trim() });
+  subjectNameInput.value = '';
+  subjectDescInput.value = '';
+};
+
+const removeSubjectItem = (index: number) => {
+  subjectItems.value.splice(index, 1);
+};
+
+const ensureProject = async () => {
+  if (draftProjectId.value) return draftProjectId.value;
+  const projectName = prompt.value.trim().slice(0, 20) || '未命名创作';
+  const project = await createProject({ name: projectName });
+  draftProjectId.value = project.id;
+  return project.id;
+};
+
+const triggerFileSelect = () => {
+  fileInputRef.value?.click();
+};
+
+const handleFileChange = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const files = target.files ? Array.from(target.files) : [];
+  if (!files.length) return;
+  await uploadFiles(files);
+  target.value = '';
+};
+
+const handleDrop = async (event: DragEvent) => {
+  const files = event.dataTransfer ? Array.from(event.dataTransfer.files) : [];
+  if (!files.length) return;
+  await uploadFiles(files);
+};
+
+const uploadFiles = async (files: File[]) => {
+  let projectId = draftProjectId.value;
+  try {
+    if (!projectId) {
+      projectId = await ensureProject();
+    }
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : '创建项目失败', 'error');
+    return;
+  }
+  await Promise.all(
+    files.map(async file => {
+      const localId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const item = {
+        localId,
+        id: '',
+        filename: file.name,
+        name: file.name,
+        size: file.size,
+        content_type: file.type,
+        category: file.type.split('/')[0] || 'document',
+        url: '',
+        label: '',
+        bindType: '',
+        tags: [],
+        parsed_text: '',
+        parse_status: '',
+        parseStatusLabel: '上传中…',
+        progress: 0,
+        status: 'uploading' as const,
+      };
+      attachments.value.push(item);
+      try {
+        const uploaded = await uploadAttachment(
+          projectId as string,
+          file,
+          item.label,
+          item.bindType,
+          item.tags,
+          percent => {
+            item.progress = percent;
+          }
+        );
+        item.id = uploaded.id;
+        item.filename = uploaded.filename;
+        item.size = uploaded.size;
+        item.content_type = uploaded.content_type;
+        item.category = uploaded.category;
+        item.url = uploaded.url;
+        item.label = uploaded.label || item.label || '';
+        item.bindType = uploaded.bind_type || item.bindType || '';
+        item.tags = uploaded.tags || [];
+        item.parsed_text = uploaded.parsed_text || '';
+        item.parse_status = uploaded.parse_status || '';
+        item.status = 'ready';
+        item.parseStatusLabel =
+          uploaded.parse_status === 'ok'
+            ? '已解析'
+            : uploaded.parse_status === 'unsupported'
+            ? '解析失败'
+            : '未解析';
+      } catch (err) {
+        item.status = 'failed';
+        item.error = err instanceof Error ? err.message : '上传失败';
+        item.parseStatusLabel = '上传失败';
+      }
+    })
+  );
+};
+
+const syncAttachment = async (item: any) => {
+  if (!draftProjectId.value || !item.id) return;
+  try {
+    const updated = await updateAttachment(draftProjectId.value, item.id, {
+      label: item.label || '',
+      bind_type: item.bindType || '',
+      tags: item.tags || [],
+    });
+    item.label = updated.label || item.label || '';
+    item.bindType = updated.bind_type || item.bindType || '';
+    item.tags = updated.tags || [];
+  } catch (err) {
+    item.error = err instanceof Error ? err.message : '标注保存失败';
+  }
+};
+
+const pickStyle = (style: { id: string; name: string; preview: string }) => {
+  selectedStyle.value = style;
+  showStyleSelector.value = false;
+};
+
 const pickDefaultModel = (items: ModelOption[]) => {
   const storedImage = sessionStorage.getItem('selectedImageModelId') || '';
-  const storedVideo = sessionStorage.getItem('selectedVideoModelId') || '';
   if (items.length === 0) return;
   const defaults = items.find(item => item.is_default && item.enabled) || items.find(item => item.enabled);
   if (!defaults) return;
-  if (items[0].type === 'image') {
-    const next = items.find(item => item.id === storedImage && item.enabled)?.id || defaults.id;
-    selectedModels.value.image = next;
-    sessionStorage.setItem('selectedImageModelId', next);
-  }
-  if (items[0].type === 'video') {
-    const next = items.find(item => item.id === storedVideo && item.enabled)?.id || defaults.id;
-    selectedModels.value.video = next;
-    sessionStorage.setItem('selectedVideoModelId', next);
-  }
+  const next = items.find(item => item.id === storedImage && item.enabled)?.id || defaults.id;
+  selectedModels.value.image = next;
+  selectedModels.value.imageRef = selectedModels.value.imageRef || next;
+  sessionStorage.setItem('selectedImageModelId', next);
 };
 
-const selectModel = (model: ModelOption) => {
-  if (!model.enabled) return;
-  if (model.type === 'image') {
-    selectedModels.value.image = model.id;
-    sessionStorage.setItem('selectedImageModelId', model.id);
+const selectImageModel = (modelId: string) => {
+  if (!modelId) return;
+  selectedModels.value.image = modelId;
+  if (!selectedModels.value.imageRef) {
+    selectedModels.value.imageRef = modelId;
   }
-  if (model.type === 'video') {
-    selectedModels.value.video = model.id;
-    sessionStorage.setItem('selectedVideoModelId', model.id);
-  }
+  sessionStorage.setItem('selectedImageModelId', modelId);
+};
+
+const selectImageRefModel = (modelId: string) => {
+  if (!modelId) return;
+  selectedModels.value.imageRef = modelId;
 };
 
 const handleSubmit = async () => {
-  if (!prompt.value.trim()) {
+  const trimmed = prompt.value.trim();
+  if (!trimmed) {
     showToast('请输入创作描述', 'warning');
+    return;
+  }
+  if (trimmed.length < minPromptLength) {
+    showToast(`至少输入 ${minPromptLength} 字`, 'warning');
+    return;
+  }
+  if (trimmed.length > maxPromptLength) {
+    showToast('输入内容已超过最大字数限制', 'warning');
     return;
   }
 
   generating.value = true;
 
   try {
-    const projectName = prompt.value.slice(0, 20);
-    const project = await createProject({ name: projectName });
-    sessionStorage.setItem('currentProjectId', project.id);
-    sessionStorage.setItem('currentProjectName', project.name);
-    sessionStorage.setItem('currentPrompt', prompt.value);
+    const projectId = draftProjectId.value || (await ensureProject());
+    const projectName = trimmed.slice(0, 20) || '未命名创作';
+    const missingBindings =
+      mode.value === 'pro' &&
+      attachments.value.some(item => item.status === 'ready' && item.id && !item.bindType);
+    if (missingBindings) {
+      showToast('有附件未绑定用途，未绑定的文件不会参与生成', 'warning');
+    }
+    const inputConfig = mode.value === 'pro' ? buildInputConfig() : undefined;
+    await updateProject(projectId, {
+      name: projectName,
+      description: trimmed,
+      ...(inputConfig ? { input_config: inputConfig } : {}),
+    });
+
+    sessionStorage.setItem('currentProjectId', projectId);
+    sessionStorage.setItem('currentProjectName', projectName);
+    sessionStorage.setItem('currentPrompt', trimmed);
     sessionStorage.setItem('currentMode', mode.value);
-    sessionStorage.setItem('streamProjectId', project.id);
+    sessionStorage.setItem('streamProjectId', projectId);
     sessionStorage.setItem('streamType', 'start');
-    sessionStorage.setItem('streamPrompt', prompt.value);
+    sessionStorage.setItem('streamPrompt', trimmed);
     sessionStorage.setItem('streamStartedAt', String(Date.now()));
 
-    await startGeneration(project.id, prompt.value, mode.value, selectedModels.value.image || undefined);
+    const documents = mode.value === 'pro' ? buildDocumentsPayload() : undefined;
+    await startGeneration(
+      projectId,
+      trimmed,
+      mode.value,
+      selectedModels.value.image || undefined,
+      documents,
+      inputConfig
+    );
     generating.value = false;
     router.push('/materials');
   } catch (err) {
@@ -330,10 +878,6 @@ const applyInspiration = (card: InspirationCard) => {
   if (textareaRef.value) {
     textareaRef.value.focus();
   }
-};
-
-const handleUploadImage = () => {
-  showToast('图片上传功能开发中...', 'info');
 };
 
 const getTodoIcon = (status: TodoItem['status']) => {
@@ -371,18 +915,50 @@ onMounted(() => {
     .catch(() => {
       imageModels.value = [];
     });
-  fetchModels('video')
-    .then(items => {
-      videoModels.value = items;
-      pickDefaultModel(items);
-    })
-    .catch(() => {
-      videoModels.value = [];
-    });
 });
+
+let inputConfigTimer: number | null = null;
+const scheduleInputConfigSave = () => {
+  if (mode.value !== 'pro' || !draftProjectId.value) return;
+  if (inputConfigTimer) {
+    window.clearTimeout(inputConfigTimer);
+  }
+  inputConfigTimer = window.setTimeout(async () => {
+    inputConfigTimer = null;
+    try {
+      await updateProject(draftProjectId.value as string, {
+        input_config: buildInputConfig(),
+      });
+    } catch (err) {
+      // Ignore autosave errors to avoid blocking input.
+    }
+  }, 500);
+};
+
+watch(
+  () => [
+    mode.value,
+    aspectRatio.value,
+    durationPreset.value,
+    durationCustom.value.h,
+    durationCustom.value.m,
+    durationCustom.value.s,
+    customStyle.value,
+    selectedStyle.value?.name,
+    selectedModels.value.image,
+    selectedModels.value.imageRef,
+    ...subjectItems.value.map(item => `${item.name}:${item.description}`),
+  ],
+  () => {
+    scheduleInputConfigSave();
+  }
+);
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll);
+  if (inputConfigTimer) {
+    window.clearTimeout(inputConfigTimer);
+  }
 });
 </script>
 
@@ -405,16 +981,16 @@ onUnmounted(() => {
 }
 
 .cyber-grid::before {
-  background-image: linear-gradient(rgba(121, 116, 126, 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(121, 116, 126, 0.12) 1px, transparent 1px);
-  background-size: 80px 80px;
-  opacity: 0.7;
+  background-image: linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
+  background-size: 100px 100px;
+  opacity: 0.35;
 }
 
 .cyber-grid::after {
-  background: radial-gradient(circle at 20% 20%, rgba(103, 80, 164, 0.12), transparent 40%),
-    radial-gradient(circle at 80% 10%, rgba(125, 82, 96, 0.1), transparent 36%),
-    radial-gradient(circle at 60% 70%, rgba(103, 80, 164, 0.08), transparent 38%);
+  background: radial-gradient(circle at 20% 20%, rgba(var(--md-accent-rgb), 0.12), transparent 40%),
+    radial-gradient(circle at 80% 10%, rgba(var(--md-accent-2-rgb), 0.1), transparent 36%),
+    radial-gradient(circle at 60% 70%, rgba(var(--md-accent-rgb), 0.08), transparent 38%);
 }
 
 .hero-section {
@@ -446,8 +1022,8 @@ onUnmounted(() => {
   gap: 6px;
   padding: 6px 12px;
   border-radius: 9999px;
-  border: 1px solid rgba(103, 80, 164, 0.35);
-  background: rgba(103, 80, 164, 0.12);
+  border: 1px solid rgba(var(--md-accent-rgb), 0.45);
+  background: rgba(var(--md-accent-rgb), 0.18);
   color: var(--md-primary);
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -466,7 +1042,7 @@ onUnmounted(() => {
 
 .glow-text {
   color: var(--md-primary);
-  text-shadow: 0 0 26px rgba(103, 80, 164, 0.3);
+  text-shadow: 0 0 26px rgba(var(--md-accent-rgb), 0.3);
 }
 
 .hero-sub {
@@ -481,24 +1057,24 @@ onUnmounted(() => {
 .entry-shell {
   width: 100%;
   max-width: 640px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  border-radius: 16px;
+  border: 1px solid var(--md-stroke);
+  border-radius: 18px;
   padding: 16px;
-  background: var(--md-surface-container);
-  box-shadow: 0 15px 32px rgba(26, 18, 44, 0.16);
+  background: var(--md-surface-card);
+  box-shadow: var(--md-card-shadow);
   transition: all 0.4s cubic-bezier(0.33, 1, 0.68, 1);
 }
 
 .entry-shell.minimal {
-  background: transparent;
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: rgba(11, 15, 22, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.25);
   padding: 10px 14px;
 }
 
 .entry-shell.expanded {
-  border-color: rgba(103, 80, 164, 0.35);
-  box-shadow: 0 25px 60px rgba(26, 18, 44, 0.2);
-  background: var(--md-surface-container);
+  border-color: rgba(var(--md-accent-rgb), 0.45);
+  box-shadow: 0 30px 68px rgba(2, 6, 23, 0.55);
+  background: var(--md-surface-card);
 }
 
 .entry-shell.minimal .mode-toggle,
@@ -526,9 +1102,9 @@ onUnmounted(() => {
 
 .entry-shell.expanded textarea {
   min-height: 140px;
-  background: var(--md-surface-container-low);
+  background: var(--md-field-bg);
   border-radius: 12px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
+  border: 1px solid var(--md-stroke);
   padding: 12px;
   color: var(--md-on-surface);
 }
@@ -538,7 +1114,7 @@ onUnmounted(() => {
 }
 
 .entry-line {
-  border-bottom: 1px solid rgba(121, 116, 126, 0.25);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
   padding-bottom: 10px;
   display: flex;
   align-items: stretch;
@@ -561,15 +1137,16 @@ onUnmounted(() => {
 }
 
 .entry-submit {
-  width: 42px;
+  min-width: 96px;
   min-height: 42px;
   border-radius: 12px;
-  border: 1px solid rgba(103, 80, 164, 0.45);
-  background: var(--md-primary);
-  color: var(--md-on-primary);
+  border: 1px solid rgba(var(--md-accent-rgb), 0.5);
+  background: linear-gradient(135deg, rgba(var(--md-accent-rgb), 0.9), rgba(var(--md-accent-2-rgb), 0.85));
+  color: #031019;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0 16px;
   cursor: pointer;
   transition: transform 0.2s ease;
   flex-shrink: 0;
@@ -577,6 +1154,12 @@ onUnmounted(() => {
 
 .entry-submit:hover {
   transform: translateY(-1px);
+}
+
+.entry-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .entry-extra {
@@ -610,8 +1193,8 @@ onUnmounted(() => {
   width: 36px;
   height: 36px;
   border-radius: 12px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container-low);
+  border: 1px solid var(--md-stroke);
+  background: rgba(15, 23, 42, 0.75);
   color: var(--md-on-surface);
   cursor: pointer;
   display: flex;
@@ -621,7 +1204,7 @@ onUnmounted(() => {
 }
 
 .input-actions button:hover {
-  border-color: rgba(103, 80, 164, 0.35);
+  border-color: rgba(var(--md-accent-rgb), 0.35);
   transform: translateY(-1px);
 }
 
@@ -631,13 +1214,425 @@ onUnmounted(() => {
   margin-left: auto;
 }
 
+.pro-config {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.config-block {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(10, 16, 28, 0.75);
+}
+
+.config-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.config-hint {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  margin-bottom: 8px;
+}
+
+.upload-box {
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  cursor: pointer;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.upload-text {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.upload-hint {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+}
+
+.upload-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.upload-batch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.upload-reminder {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #b42318;
+}
+
+.file-input {
+  display: none;
+}
+
+.upload-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.upload-item {
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  padding: 10px;
+  background: rgba(10, 16, 28, 0.85);
+}
+
+.upload-info {
+  margin-bottom: 8px;
+}
+
+.upload-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.upload-meta {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+}
+
+.upload-error {
+  font-size: 12px;
+  color: #b42318;
+}
+
+.upload-controls {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.upload-recommend {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--md-on-surface-variant);
+  margin-bottom: 8px;
+}
+
+.recommend-warn {
+  margin-left: 6px;
+  color: #b42318;
+}
+
+.config-input {
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--md-stroke);
+  padding: 0 10px;
+  background: var(--md-field-bg);
+  color: var(--md-on-surface);
+  font-size: 12px;
+}
+
+.config-input.small {
+  width: 72px;
+  padding: 0 6px;
+}
+
+.config-input.compact {
+  width: 180px;
+  height: 30px;
+  font-size: 11px;
+}
+
+.config-select {
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--md-stroke);
+  padding: 0 8px;
+  background: var(--md-field-bg);
+  color: var(--md-on-surface);
+  font-size: 12px;
+}
+
+.upload-progress {
+  height: 6px;
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.upload-progress-bar {
+  height: 100%;
+  background: var(--md-primary);
+  transition: width 0.2s ease;
+}
+
+.upload-status {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.status-pill.ok {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.16);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.status-pill.danger {
+  color: #fecaca;
+  background: rgba(248, 113, 113, 0.16);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.status-divider {
+  color: rgba(148, 163, 184, 0.6);
+}
+
+.config-advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.advanced-hint {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+}
+
+.config-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.model-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.model-column-title {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  margin-bottom: 8px;
+}
+
+.model-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-chip {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.85);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.model-chip.active {
+  border-color: var(--md-primary);
+  color: var(--md-primary);
+}
+
+.model-chip.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.model-empty {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+}
+
+.subject-input-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(160px, 1.4fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.subject-suggest {
+  margin-top: 10px;
+}
+
+.suggest-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  margin-bottom: 6px;
+}
+
+.subject-suggest-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.subject-suggest-chip {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.85);
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.subject-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subject-item {
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  padding: 8px;
+  background: rgba(10, 16, 28, 0.85);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.subject-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.subject-main {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.subject-desc {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+}
+
+.chip-remove {
+  border: none;
+  background: transparent;
+  color: var(--md-primary);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.style-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.duration-custom {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.config-preview {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  text-align: right;
+}
+
+.style-selector-popover {
+  position: absolute;
+  top: 120px;
+  right: 24px;
+  width: min(520px, 90vw);
+  background: var(--md-surface);
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  z-index: 20;
+}
+
+.style-selector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.style-selector-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.style-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.style-card {
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  background: var(--md-surface-container-low);
+  cursor: pointer;
+}
+
+.style-card.active {
+  border-color: var(--md-primary);
+  color: var(--md-primary);
+}
+
+.style-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+}
+
 /* Mode Toggle */
 .mode-toggle {
   width: 96px;
   height: 34px;
   border-radius: 9999px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container-low);
+  border: 1px solid var(--md-stroke);
+  background: rgba(10, 16, 28, 0.85);
   position: relative;
   display: flex;
   align-items: center;
@@ -655,7 +1650,7 @@ onUnmounted(() => {
   bottom: 4px;
   width: calc(50% - 6px);
   border-radius: 9999px;
-  background: rgba(103, 80, 164, 0.2);
+  background: rgba(var(--md-accent-rgb), 0.28);
   transition: transform 0.25s ease;
 }
 
@@ -679,114 +1674,29 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-/* Model Selector */
-.model-selector-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  width: 100%;
-  max-width: 420px;
-  background: var(--md-surface-container);
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  border-radius: 18px;
-  box-shadow: 0 30px 70px rgba(26, 18, 44, 0.2);
-  padding: 14px;
-  z-index: 100;
-}
-
-.model-selector-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.model-selector-tab {
-  flex: 1;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container-low);
-  color: var(--md-on-surface);
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.model-selector-tab.active {
-  background: rgba(103, 80, 164, 0.16);
-  color: var(--md-on-surface);
-  border-color: rgba(103, 80, 164, 0.35);
-}
-
-.model-selector-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container-low);
-  margin-bottom: 8px;
-  cursor: pointer;
-  color: var(--md-on-surface);
-  font-size: 14px;
-}
-
-.model-selector-item.active {
-  border-color: rgba(103, 80, 164, 0.45);
-  background: rgba(103, 80, 164, 0.12);
-}
-
-.model-selector-item.disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.model-tag {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  background: rgba(103, 80, 164, 0.12);
-  color: var(--md-primary);
-}
-
-.model-empty {
-  font-size: 12px;
-  color: var(--md-on-surface-variant);
-  padding: 8px;
-}
-
-.model-selector-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.model-selector-actions button {
-  padding: 8px 16px;
-  border-radius: 10px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
 .btn-ghost {
-  background: var(--md-surface-container-low);
-  border: 1px solid rgba(121, 116, 126, 0.25);
+  background: rgba(10, 16, 28, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.3);
   color: var(--md-on-surface);
+}
+
+.btn-ghost.small {
+  font-size: 11px;
+  padding: 4px 8px;
 }
 
 .btn-primary {
-  background: var(--md-primary);
+  background: linear-gradient(135deg, rgba(var(--md-accent-rgb), 0.9), rgba(var(--md-accent-2-rgb), 0.85));
   border: none;
-  color: var(--md-on-primary);
+  color: #031019;
   font-weight: 600;
 }
 
 /* Glass Panel */
 .glass-panel {
-  background: var(--md-surface-container);
-  border: 1px solid rgba(121, 116, 126, 0.2);
-  box-shadow: 0 25px 60px rgba(26, 18, 44, 0.2);
+  background: var(--md-surface-card);
+  border: 1px solid var(--md-stroke);
+  box-shadow: var(--md-card-shadow);
 }
 
 /* Neon Border */
@@ -799,7 +1709,7 @@ onUnmounted(() => {
   content: "";
   position: absolute;
   inset: -120%;
-  background: conic-gradient(from 120deg, rgba(103, 80, 164, 0.9), rgba(125, 82, 96, 0.8), rgba(103, 80, 164, 0.6), rgba(103, 80, 164, 0.9));
+  background: conic-gradient(from 120deg, rgba(var(--md-accent-rgb), 0.9), rgba(var(--md-accent-2-rgb), 0.8), rgba(var(--md-accent-rgb), 0.6), rgba(var(--md-accent-rgb), 0.9));
   animation: rotate 12s linear infinite;
   opacity: 0.25;
   transform-origin: center;
@@ -856,14 +1766,14 @@ onUnmounted(() => {
   padding: 24px;
   cursor: pointer;
   transition: transform 0.25s ease, border-color 0.25s ease;
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.2);
   background: var(--md-surface-container);
 }
 
 .demo-card:hover {
   transform: translateY(-4px);
-  border-color: rgba(103, 80, 164, 0.35);
-  background: rgba(103, 80, 164, 0.1);
+  border-color: rgba(var(--md-accent-rgb), 0.35);
+  background: rgba(var(--md-accent-rgb), 0.1);
 }
 
 .card-image {
@@ -941,7 +1851,7 @@ onUnmounted(() => {
 }
 
 .todo-item--done .todo-icon {
-  background: rgba(103, 80, 164, 0.15);
+  background: rgba(var(--md-accent-rgb), 0.15);
   color: var(--md-primary);
 }
 </style>

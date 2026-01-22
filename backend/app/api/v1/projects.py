@@ -85,6 +85,8 @@ async def update_project(
         raise HTTPException(status_code=400, detail="tags must be a list")
     if "metadata" in payload and payload["metadata"] is not None and not isinstance(payload["metadata"], dict):
         raise HTTPException(status_code=400, detail="metadata must be an object")
+    if "input_config" in payload and payload["input_config"] is not None and not isinstance(payload["input_config"], dict):
+        raise HTTPException(status_code=400, detail="input_config must be an object")
     if "status" in payload and payload["status"] not in PROJECT_STATUSES:
         raise HTTPException(status_code=400, detail="status invalid")
     if "stage" in payload and payload["stage"] not in PROJECT_STAGES:

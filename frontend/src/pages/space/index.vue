@@ -226,8 +226,8 @@ onMounted(async () => {
 .space-badge {
   padding: 6px 10px;
   border-radius: 9999px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container-low);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.75);
   font-size: 12px;
   color: var(--md-on-surface-variant);
 }
@@ -235,16 +235,16 @@ onMounted(async () => {
 .space-btn {
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container-low);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.8);
   color: var(--md-on-surface);
   cursor: pointer;
   font-size: 12px;
 }
 
 .space-btn:hover {
-  border-color: rgba(103, 80, 164, 0.3);
-  background: rgba(103, 80, 164, 0.12);
+  border-color: rgba(var(--md-accent-rgb), 0.3);
+  background: rgba(var(--md-accent-rgb), 0.12);
 }
 
 .section-title {
@@ -263,9 +263,10 @@ onMounted(async () => {
 .pill {
   padding: 4px 8px;
   border-radius: 9999px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
+  border: 1px solid rgba(var(--md-accent-rgb), 0.35);
   font-size: 11px;
-  color: var(--md-primary);
+  color: #dff8ff;
+  background: rgba(var(--md-accent-rgb), 0.18);
 }
 
 .space-cards {
@@ -275,17 +276,18 @@ onMounted(async () => {
 }
 
 .space-card {
-  border: 1px solid rgba(121, 116, 126, 0.2);
-  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 14px;
   padding: 12px;
-  background: var(--md-surface-container);
+  background: var(--md-surface-card);
   cursor: pointer;
   transition: all 0.2s ease;
+  box-shadow: var(--md-card-shadow-soft);
 }
 
 .space-card:hover {
-  border-color: rgba(103, 80, 164, 0.3);
-  background: rgba(103, 80, 164, 0.08);
+  border-color: rgba(var(--md-accent-rgb), 0.3);
+  background: rgba(var(--md-accent-rgb), 0.08);
 }
 
 .space-card h3 {
@@ -310,16 +312,16 @@ onMounted(async () => {
   flex: 1;
   padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid rgba(121, 116, 126, 0.2);
-  background: var(--md-surface-container-low);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.85);
   color: var(--md-on-surface);
   cursor: pointer;
   font-size: 12px;
 }
 
 .action-btn:hover {
-  border-color: rgba(103, 80, 164, 0.3);
-  background: rgba(103, 80, 164, 0.12);
+  border-color: rgba(var(--md-accent-rgb), 0.3);
+  background: rgba(var(--md-accent-rgb), 0.12);
 }
 
 .empty-state {
@@ -343,25 +345,25 @@ onMounted(async () => {
 
 .space-selector {
   width: min(520px, 90vw);
-  background: var(--md-surface-container);
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: var(--md-surface-card);
+  border: 1px solid var(--md-stroke);
   border-radius: 16px;
   padding: 16px;
   box-shadow: 0 30px 70px rgba(26, 18, 44, 0.2);
 }
 
 .space-option {
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.25);
   padding: 10px 12px;
   border-radius: 10px;
   margin-bottom: 8px;
   cursor: pointer;
-  background: var(--md-surface-container-low);
+  background: rgba(10, 16, 28, 0.85);
   transition: all 0.2s ease;
 }
 
 .space-option:hover {
-  border-color: rgba(103, 80, 164, 0.3);
+  border-color: rgba(var(--md-accent-rgb), 0.3);
 }
 
 .meta {

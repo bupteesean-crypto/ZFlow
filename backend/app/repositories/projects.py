@@ -70,11 +70,14 @@ def update_project(db: Session, project_id: str, payload: dict) -> Optional[dict
         "stage",
         "progress",
         "last_material_package_id",
+        "input_config",
         "metadata",
     ]:
         if key in payload:
             if key == "metadata":
                 project.metadata_json = payload[key]
+            elif key == "input_config":
+                project.input_config = payload[key]
             else:
                 setattr(project, key, payload[key])
             updated_fields.append(key)

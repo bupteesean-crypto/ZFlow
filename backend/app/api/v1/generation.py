@@ -154,6 +154,40 @@ def _compose_image_prompt(base_prompt: str, style_prompt: str, constraints: str)
     return "\n\n".join([section for section in sections if section]).strip()
 
 
+def _normalize_input_config(value: object) -> dict:
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _normalize_documents(value: object) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    items = []
+    for item in value:
+        if isinstance(item, dict):
+            items.append(item)
+    return items
+
+
+def _resolve_image_size(input_config: dict) -> str:
+    raw_size = input_config.get("image_size") if isinstance(input_config.get("image_size"), str) else ""
+    if raw_size.strip():
+        return raw_size.strip()
+    ratio = input_config.get("aspect_ratio") if isinstance(input_config.get("aspect_ratio"), str) else ""
+    ratio = ratio.strip()
+    size_map = {
+        "16:9": "1280x720",
+        "4:3": "1024x768",
+        "2.35:1": "1280x544",
+        "19:16": "1140x960",
+        "3:4": "960x1280",
+    }
+    if ratio in size_map:
+        return size_map[ratio]
+    return settings.seedream_default_size or "960x1280"
+
+
 def _build_scene_prompt_parts(scene: dict, blueprint: dict) -> dict:
     summary = blueprint.get("summary", {}) if isinstance(blueprint, dict) else {}
     art_style = blueprint.get("art_style", {}) if isinstance(blueprint, dict) else {}
@@ -227,28 +261,28 @@ def _build_character_sheet_prompt(subject: dict, blueprint: dict) -> str:
         style_prompt = f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
 
     lines = [
-        "Create a clean 3:4 portrait character turnaround sheet for a single character.",
+        "生成同一个角色的三视图角色设定图（turnaround / model sheet）。",
         "",
-        f"Character: {name}",
-        f"Description: {description}",
+        f"角色：{name}",
+        f"描述：{description}",
     ]
     if traits_text:
-        lines.append(f"Visual traits: {traits_text}")
+        lines.append(f"特征：{traits_text}")
     if style_prompt:
-        lines.append(f"Style: {style_prompt}")
+        lines.append(f"风格：{style_prompt}")
     lines.extend(
         [
             "",
-            "Composition:",
-            "- front view, side view, back view in one canvas",
-            "- front shows facial features and torso; side shows profile silhouette; back shows hair and back details",
-            "- evenly spaced, same scale, consistent proportions",
-            "- full-body views, centered",
-            "- neutral background, uniform lighting",
-            "",
-            "Constraints:",
-            "- no text, no captions, no logos, no watermark",
-            "- avoid extra limbs or distorted anatomy",
+            "要求：",
+            "- 画面必须同时包含【正面视图 / 侧面视图 / 背面视图】，三个视图横向并排展示",
+            "- 角色一致性要求：五官一致、发型一致、服装款式一致、颜色一致、身材比例一致",
+            "- 姿态：标准站立中立姿态（neutral pose），双脚自然站立，身体直立，无动作、无夸张姿势",
+            "- 视角：正交视图（orthographic view），不允许透视，不允许镜头角度变化，仅正面/侧面/背面三种视角",
+            "- 光照：均匀棚拍光照，无强阴影，无戏剧化光影",
+            "- 背景：纯白色或浅灰色背景，无场景、无道具、无装饰",
+            "- 绘制：高细节，线条清晰，轮廓明确，适合作为角色参考设定图使用",
+            "- 强约束：禁止改变服装，禁止改变颜色，禁止增加动作，禁止透视，禁止生成多个人物",
+            "- 禁止文字、水印、Logo、字幕",
         ]
     )
     return "\n".join([line for line in lines if line is not None]).strip()
@@ -359,6 +393,7 @@ def _run_generation_task(
     llm_input: str,
     mode: str,
     documents: list,
+    input_config: dict,
     task_id: str,
     trace_id: str,
     image_model_id: str | None,
@@ -386,6 +421,7 @@ def _run_generation_task(
             llm_input,
             mode,
             documents=documents,
+            input_config=input_config,
         )
         _emit_todo_update(project_id, "summary", "done")
         _emit_content_update(project_id, "summary", summary)
@@ -396,6 +432,8 @@ def _run_generation_task(
             summary,
             llm_input,
             mode,
+            documents=documents,
+            input_config=input_config,
         )
         _emit_todo_update(project_id, "art_style", "done")
         _emit_content_update(project_id, "art_style", art_style)
@@ -411,6 +449,8 @@ def _run_generation_task(
             art_style,
             llm_input,
             mode,
+            documents=documents,
+            input_config=input_config,
         )
         _emit_todo_update(project_id, "characters", "done")
         _emit_content_update(project_id, "characters", subjects)
@@ -423,6 +463,8 @@ def _run_generation_task(
             subjects,
             llm_input,
             mode,
+            documents=documents,
+            input_config=input_config,
         )
         _emit_todo_update(project_id, "scenes", "done")
         _emit_content_update(project_id, "scenes", scenes)
@@ -436,6 +478,8 @@ def _run_generation_task(
             scenes,
             llm_input,
             mode,
+            documents=documents,
+            input_config=input_config,
         )
         _emit_todo_update(project_id, "storyboard", "done")
         _emit_content_update(project_id, "storyboard", storyboard)
@@ -451,7 +495,7 @@ def _run_generation_task(
         }
         blueprint = build_blueprint(llm_payload, source_prompt=llm_input)
 
-        image_size = settings.seedream_default_size or "960x1280"
+        image_size = _resolve_image_size(input_config)
         images: list[dict] = []
         for subject in blueprint.get("subjects", []):
             subject_id = subject.get("id")
@@ -547,8 +591,11 @@ def _run_generation_task(
         image_plan = {
             "prompt": first_scene.get("prompt_hint") or blueprint["summary"]["synopsis"],
             "style": None,
-            "aspect_ratio": "3:4",
-            "size": settings.seedream_default_size or "960x1280",
+            "aspect_ratio": (
+                input_config.get("aspect_ratio") if isinstance(input_config, dict) else None
+            )
+            or "3:4",
+            "size": image_size,
             "seed": None,
         }
 
@@ -563,7 +610,7 @@ def _run_generation_task(
                     "keywords": blueprint["summary"]["keywords"],
                     "blueprint_v1": blueprint,
                     "image_plan": image_plan,
-                    "image_size": settings.seedream_default_size or "960x1280",
+                    "image_size": image_size,
                     "images": images,
                     "video_plan": {"status": "pending", "items": []},
                     "package_version": package_version,
@@ -573,6 +620,8 @@ def _run_generation_task(
                     "user_feedback": None,
                     "generation_mode": mode,
                     "image_model_id": image_model_id,
+                    "input_config": input_config,
+                    "input_documents": documents,
                 },
                 "art_style": {
                     "style_name": blueprint.get("art_style", {}).get("style_name", ""),
@@ -695,12 +744,18 @@ async def start_generation(
     mode = mode.strip().lower() if isinstance(mode, str) else "general"
     if mode not in {"general", "pro"}:
         mode = "general"
-    documents = payload.get("documents")
-    documents = documents if isinstance(documents, list) else []
+    documents = _normalize_documents(payload.get("documents"))
+    input_config = _normalize_input_config(payload.get("input_config"))
+    if mode == "pro" and not documents:
+        metadata = project.get("metadata") if isinstance(project.get("metadata"), dict) else {}
+        attachments = metadata.get("attachments") if isinstance(metadata.get("attachments"), list) else []
+        documents = _normalize_documents(attachments)
     image_model_id = payload.get("image_model_id")
     if image_model_id is not None and not isinstance(image_model_id, str):
         raise HTTPException(status_code=400, detail="image_model_id must be a string")
     image_model_id = image_model_id.strip() if isinstance(image_model_id, str) and image_model_id.strip() else None
+    if not image_model_id and isinstance(input_config.get("image_model_id"), str):
+        image_model_id = input_config.get("image_model_id").strip() or None
     image_model = None
     if image_model_id:
         try:
@@ -708,6 +763,12 @@ async def start_generation(
         except ValueError:
             raise HTTPException(status_code=400, detail="image_model_id not available")
         image_model = model_spec.model if model_spec else None
+    if input_config:
+        try:
+            project_repo.update_project(db, project_id, {"input_config": input_config})
+        except SQLAlchemyError:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database error")
     task_id = new_id()
     trace_id = new_trace_id()
     task = {
@@ -736,6 +797,7 @@ async def start_generation(
         llm_input,
         mode,
         documents,
+        input_config,
         task_id,
         trace_id,
         image_model_id,

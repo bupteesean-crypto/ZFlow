@@ -22,160 +22,363 @@
 
     <div class="editor-layout">
       <div class="editor-left">
+        <div class="panel-tabs">
+          <button :class="['tab-btn', { active: leftTab === 'visual' }]" @click="leftTab = 'visual'">画面</button>
+          <button :class="['tab-btn', { active: leftTab === 'voice' }]" @click="leftTab = 'voice'">配音</button>
+          <button :class="['tab-btn', { active: leftTab === 'music' }]" @click="leftTab = 'music'">音乐</button>
+        </div>
         <div v-if="currentClip" class="shot-panel">
-          <div class="panel-title">剪辑操作栏</div>
-          <div class="shot-header">
-            <div class="shot-title">分镜 {{ currentClip.sequenceLabel }}</div>
-            <div class="shot-sub">{{ currentClip.sceneName || '未关联场景' }}</div>
-          </div>
-          <div class="shot-status" :class="{ pending: currentClip.status !== 'ready' }">
-            {{ currentClip.status === 'ready' ? '素材已准备' : '待生成画面' }}
-          </div>
+          <template v-if="leftTab === 'visual'">
+            <div class="panel-title">剪辑操作栏</div>
+            <div class="shot-header">
+              <div class="shot-title">分镜 {{ currentClip.sequenceLabel }}</div>
+              <div class="shot-sub">{{ currentClip.sceneName || '未关联场景' }}</div>
+            </div>
+            <div class="shot-status" :class="{ pending: currentClip.status !== 'ready' }">
+              {{ currentClip.status === 'ready' ? '素材已准备' : '待生成画面' }}
+            </div>
 
-          <div class="info-card">
-            <div class="info-title">分镜信息</div>
-            <div class="info-row">
-              <span class="label">时长</span>
-              <span class="value">{{ currentClip.durationSec }}s</span>
-            </div>
-            <div class="info-row">
-              <span class="label">镜头</span>
-              <span class="value">{{ currentClip.camera || '未指定' }}</span>
-            </div>
-            <div class="info-row">
-              <span class="label">描述</span>
-            </div>
-            <p class="info-text">{{ currentClip.description || '暂无描述' }}</p>
-          </div>
-
-          <div class="info-card">
-            <button class="collapse-header" @click="toggleImagePrompt">
-              <span>生图提示词</span>
-              <span class="collapse-hint">{{ isImagePromptOpen ? '收起' : '展开' }}</span>
-            </button>
-            <div v-if="isImagePromptOpen" class="collapse-body">
-              <div v-if="!isEditingPrompt" class="prompt-readonly" @click="startPromptEdit">
-                {{ currentClip.prompt || '暂无提示词，点击编辑补充' }}
+            <div class="info-card">
+              <div class="info-title">分镜信息</div>
+              <div class="info-row">
+                <span class="label">时长</span>
+                <span class="value">{{ currentClip.durationSec }}s</span>
               </div>
-              <textarea
-                v-else
-                v-model="promptDraft"
-                class="prompt-editor"
-                rows="4"
-                placeholder="编辑分镜画面提示词"
-              ></textarea>
+              <div class="info-row">
+                <span class="label">镜头</span>
+                <span class="value">{{ currentClip.camera || '未指定' }}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">描述</span>
+              </div>
+              <p class="info-text">{{ currentClip.description || '暂无描述' }}</p>
+            </div>
+
+            <div class="info-card">
+              <button class="collapse-header" @click="toggleImagePrompt">
+                <span>生图提示词</span>
+                <span class="collapse-hint">{{ isImagePromptOpen ? '收起' : '展开' }}</span>
+              </button>
+              <div v-if="isImagePromptOpen" class="collapse-body">
+                <div v-if="!isEditingPrompt" class="prompt-readonly" @click="startPromptEdit">
+                  {{ currentClip.prompt || '暂无提示词，点击编辑补充' }}
+                </div>
+                <textarea
+                  v-else
+                  v-model="promptDraft"
+                  class="prompt-editor"
+                  rows="4"
+                  placeholder="编辑分镜画面提示词"
+                ></textarea>
+                <div class="field-row">
+                  <span class="label">图片模型</span>
+                  <select v-model="selectedImageModelId" class="model-select" :disabled="isRegeneratingImage">
+                    <option v-for="model in imageModels" :key="model.id" :value="model.id" :disabled="!model.enabled">
+                      {{ model.label }}{{ model.enabled ? '' : '（未启用）' }}
+                    </option>
+                  </select>
+                </div>
+                <div class="action-row">
+                  <button
+                    v-if="!isEditingPrompt"
+                    class="pill-btn"
+                    :disabled="currentClip.status !== 'ready' || isRegeneratingImage"
+                    @click="startPromptEdit"
+                  >
+                    编辑提示词
+                  </button>
+                  <button
+                    v-else
+                    class="pill-btn primary"
+                    :disabled="isRegeneratingImage || !promptDraft.trim() || currentClip.status !== 'ready'"
+                    @click="regenerateWithPrompt"
+                  >
+                    保存并重新生成
+                  </button>
+                  <button v-if="isEditingPrompt" class="pill-btn ghost" @click="cancelPromptEdit">取消</button>
+                  <button
+                    class="pill-btn"
+                    :disabled="currentClip.status !== 'ready' || isRegeneratingImage"
+                    @click="openImageFeedback"
+                  >
+                    修改意见
+                  </button>
+                </div>
+              </div>
+              <div v-else class="collapse-note">点击展开查看与编辑</div>
+            </div>
+
+            <div class="info-card">
+              <div class="info-title">片段操作</div>
+              <div class="action-row">
+                <button class="pill-btn primary" @click="playCurrentClip">
+                  {{ isPlaying && (playMode === 'clip' || playMode === 'video') ? '暂停当前分镜' : '播放当前分镜' }}
+                </button>
+                <button class="pill-btn" @click="jumpToTimeline">定位到时间轴</button>
+              </div>
+            </div>
+
+            <div class="info-card">
+              <div class="info-title">视频片段</div>
               <div class="field-row">
-                <span class="label">图片模型</span>
-                <select v-model="selectedImageModelId" class="model-select" :disabled="isRegeneratingImage">
-                  <option v-for="model in imageModels" :key="model.id" :value="model.id" :disabled="!model.enabled">
+                <span class="label">视频模型</span>
+                <select v-model="selectedVideoModelId" class="model-select" :disabled="isGeneratingVideo">
+                  <option v-for="model in videoModels" :key="model.id" :value="model.id" :disabled="!model.enabled">
                     {{ model.label }}{{ model.enabled ? '' : '（未启用）' }}
                   </option>
                 </select>
               </div>
               <div class="action-row">
                 <button
-                  v-if="!isEditingPrompt"
-                  class="pill-btn"
-                  :disabled="currentClip.status !== 'ready' || isRegeneratingImage"
-                  @click="startPromptEdit"
-                >
-                  编辑提示词
-                </button>
-                <button
-                  v-else
                   class="pill-btn primary"
-                  :disabled="isRegeneratingImage || !promptDraft.trim() || currentClip.status !== 'ready'"
-                  @click="regenerateWithPrompt"
+                  :disabled="currentClip.status !== 'ready' || isGeneratingVideo"
+                  @click="generateVideoForShot"
                 >
-                  保存并重新生成
+                  生成视频
                 </button>
-                <button v-if="isEditingPrompt" class="pill-btn ghost" @click="cancelPromptEdit">取消</button>
-                <button
-                  class="pill-btn"
-                  :disabled="currentClip.status !== 'ready' || isRegeneratingImage"
-                  @click="openImageFeedback"
-                >
-                  修改意见
-                </button>
+                <span class="video-status-note" :class="{ failed: currentVideoState.status === 'failed' }">
+                  {{ videoStatusLabel }}
+                </span>
               </div>
             </div>
-            <div v-else class="collapse-note">点击展开查看与编辑</div>
-          </div>
 
-          <div class="info-card">
-            <div class="info-title">片段操作</div>
-            <div class="action-row">
-              <button class="pill-btn primary" @click="playCurrentClip">
-                {{ isPlaying && (playMode === 'clip' || playMode === 'video') ? '暂停当前分镜' : '播放当前分镜' }}
+            <div v-if="currentClip && hasVideoForShot(currentClip.shotId)" class="info-card">
+              <button class="collapse-header" @click="toggleVideoPrompt">
+                <span>生视频提示词</span>
+                <span class="collapse-hint">{{ isVideoPromptOpen ? '收起' : '展开' }}</span>
               </button>
-              <button class="pill-btn" @click="jumpToTimeline">定位到时间轴</button>
-            </div>
-          </div>
-
-          <div class="info-card">
-            <div class="info-title">视频片段</div>
-            <div class="field-row">
-              <span class="label">视频模型</span>
-              <select v-model="selectedVideoModelId" class="model-select" :disabled="isGeneratingVideo">
-                <option v-for="model in videoModels" :key="model.id" :value="model.id" :disabled="!model.enabled">
-                  {{ model.label }}{{ model.enabled ? '' : '（未启用）' }}
-                </option>
-              </select>
-            </div>
-            <div class="action-row">
-              <button
-                class="pill-btn primary"
-                :disabled="currentClip.status !== 'ready' || isGeneratingVideo"
-                @click="generateVideoForShot"
-              >
-                生成视频
-              </button>
-              <span class="video-status-note" :class="{ failed: currentVideoState.status === 'failed' }">
-                {{ videoStatusLabel }}
-              </span>
-            </div>
-          </div>
-
-          <div v-if="currentClip && hasVideoForShot(currentClip.shotId)" class="info-card">
-            <button class="collapse-header" @click="toggleVideoPrompt">
-              <span>生视频提示词</span>
-              <span class="collapse-hint">{{ isVideoPromptOpen ? '收起' : '展开' }}</span>
-            </button>
-            <div v-if="isVideoPromptOpen" class="collapse-body">
-              <div v-if="!isEditingVideoPrompt" class="prompt-readonly" @click="isEditingVideoPrompt = true">
-                {{ currentVideoState.prompt || '暂无提示词，点击编辑' }}
+              <div v-if="isVideoPromptOpen" class="collapse-body">
+                <div v-if="!isEditingVideoPrompt" class="prompt-readonly" @click="isEditingVideoPrompt = true">
+                  {{ currentVideoState.prompt || '暂无提示词，点击编辑' }}
+                </div>
+                <textarea
+                  v-else
+                  v-model="videoPromptDraft"
+                  class="prompt-editor"
+                  rows="4"
+                  placeholder="编辑分镜视频提示词"
+                ></textarea>
+                <div class="action-row">
+                  <button
+                    v-if="!isEditingVideoPrompt"
+                    class="pill-btn"
+                    @click="isEditingVideoPrompt = true"
+                  >
+                    编辑提示词
+                  </button>
+                  <button
+                    v-else
+                    class="pill-btn primary"
+                    :disabled="!videoPromptDraft.trim() || isGeneratingVideo"
+                    @click="saveVideoPrompt"
+                  >
+                    保存并重新生成
+                  </button>
+                  <button v-if="isEditingVideoPrompt" class="pill-btn ghost" @click="cancelVideoPromptEdit">
+                    取消
+                  </button>
+                  <button class="pill-btn" :disabled="isGeneratingVideo" @click="openVideoFeedback">修改意见</button>
+                </div>
               </div>
+              <div v-else class="collapse-note">点击展开查看与编辑</div>
+            </div>
+          </template>
+
+          <template v-else-if="leftTab === 'voice'">
+            <div class="panel-title">配音设置</div>
+            <div class="info-card">
+              <div class="info-title">旁白台词</div>
               <textarea
-                v-else
-                v-model="videoPromptDraft"
+                v-model="narrationText"
                 class="prompt-editor"
                 rows="4"
-                placeholder="编辑分镜视频提示词"
+                :maxlength="narrationLimit"
+                placeholder="输入需要配音的旁白内容"
               ></textarea>
+              <div class="row-between">
+                <span :class="['count-label', { warn: narrationOverLimit }]">
+                  {{ narrationCount }}/{{ narrationLimit }}
+                </span>
+                <span class="count-hint">{{ narrationDurationLabel }}</span>
+              </div>
+              <div class="action-row">
+                <button class="pill-btn" :disabled="!narrationText.trim() || isPreviewingTts" @click="previewNarration">
+                  {{ isPreviewingTts ? '生成中…' : '试听' }}
+                </button>
+                <button class="pill-btn ghost" :disabled="!isPreviewingTts" @click="stopNarrationPreview">
+                  停顿
+                </button>
+                <span v-if="previewAudioUrl" class="status-note">已生成试听音频</span>
+              </div>
+              <div v-if="ttsError" class="status-error">{{ ttsError }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="info-title">声音音色</div>
+              <div class="voice-card" @click="showVoicePicker = true">
+                <div class="voice-name">{{ selectedVoiceOption?.name || '选择音色' }}</div>
+                <div class="voice-meta">
+                  <span>{{ selectedVoiceOption?.gender || '未知' }}</span>
+                  <span>{{ selectedVoiceOption?.age_group || '-' }}</span>
+                  <span>{{ selectedVoiceOption?.locale || '' }}</span>
+                </div>
+              </div>
+              <div class="field-row">
+                <span class="label">情绪</span>
+                <select v-model="selectedEmotion" class="model-select">
+                  <option v-for="item in emotionOptions" :key="item" :value="item">{{ item }}</option>
+                </select>
+              </div>
+              <label class="checkbox-row">
+                <input type="checkbox" v-model="bindVoiceToRole" @change="handleRoleBinding('voice')" />
+                <span>应用关联角色</span>
+              </label>
+              <div v-if="selectedVoiceRole" class="role-note">已绑定角色：{{ selectedVoiceRole.name }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="info-title">声音参数</div>
+              <div class="slider-row">
+                <span class="label">音量</span>
+                <input v-model.number="voiceVolume" type="range" min="0" max="100" step="1" />
+                <span class="value">{{ voiceVolume }}</span>
+              </div>
+              <div class="slider-row">
+                <span class="label">语速</span>
+                <input v-model.number="voiceSpeed" type="range" min="0.5" max="2" step="0.1" />
+                <span class="value">{{ voiceSpeed.toFixed(1) }}x</span>
+              </div>
+              <label class="checkbox-row">
+                <input type="checkbox" v-model="bindParamsToRole" @change="handleRoleBinding('params')" />
+                <span>应用关联角色</span>
+              </label>
+              <div v-if="selectedVoiceRole" class="role-note">已绑定角色：{{ selectedVoiceRole.name }}</div>
+            </div>
+
+            <div class="info-card">
+              <div class="info-title">应用到当前分镜</div>
               <div class="action-row">
                 <button
-                  v-if="!isEditingVideoPrompt"
-                  class="pill-btn"
-                  @click="isEditingVideoPrompt = true"
-                >
-                  编辑提示词
-                </button>
-                <button
-                  v-else
                   class="pill-btn primary"
-                  :disabled="!videoPromptDraft.trim() || isGeneratingVideo"
-                  @click="saveVideoPrompt"
+                  :disabled="isGeneratingTts || !narrationText.trim() || narrationOverLimit"
+                  @click="applyNarration"
                 >
-                  保存并重新生成
+                  {{ isGeneratingTts ? '生成中…' : '应用修改' }}
                 </button>
-                <button v-if="isEditingVideoPrompt" class="pill-btn ghost" @click="cancelVideoPromptEdit">
-                  取消
-                </button>
-                <button class="pill-btn" :disabled="isGeneratingVideo" @click="openVideoFeedback">修改意见</button>
+                <span v-if="currentClip.audioUrl" class="status-note">已绑定音频</span>
+              </div>
+              <div v-if="currentClip.audioDurationSec" class="status-hint">
+                当前音频时长：{{ Math.round(currentClip.audioDurationSec) }}s
               </div>
             </div>
-            <div v-else class="collapse-note">点击展开查看与编辑</div>
-          </div>
+          </template>
+
+          <template v-else>
+            <div class="panel-title">音乐设置</div>
+            <div class="music-tabs">
+              <button :class="['music-tab', { active: musicTab === 'ai' }]" @click="musicTab = 'ai'">AI 生成</button>
+              <button :class="['music-tab', { active: musicTab === 'library' }]" @click="musicTab = 'library'">
+                音乐库
+              </button>
+            </div>
+
+            <div v-if="musicTab === 'ai'" class="info-card">
+              <div class="info-title">AI 生成音乐</div>
+              <div class="music-input">
+                <textarea
+                  v-model="musicPrompt"
+                  class="prompt-editor"
+                  rows="3"
+                  :maxlength="musicPromptLimit"
+                  placeholder="描述你想要生成的音乐"
+                ></textarea>
+                <div class="row-between">
+                  <span :class="['count-label', { warn: musicPromptOverLimit }]">
+                    {{ musicPromptCount }}/{{ musicPromptLimit }}
+                  </span>
+                  <button
+                    class="pill-btn"
+                    :disabled="isGeneratingMusic || !musicPrompt.trim() || musicPromptOverLimit"
+                    @click="generateMusicTrack"
+                  >
+                    {{ isGeneratingMusic ? '生成中…' : '生成' }}
+                  </button>
+                </div>
+                <div v-if="musicError" class="status-error">{{ musicError }}</div>
+              </div>
+
+              <div class="music-list" v-if="musicAiResults.length">
+                <div
+                  v-for="item in musicAiResults"
+                  :key="item.id"
+                  :class="['music-card', { active: item.id === selectedMusicId }]"
+                  @click="selectMusicItem(item)"
+                >
+                  <div class="music-cover" :style="{ background: item.cover_style || defaultCoverStyle }"></div>
+                  <div class="music-info">
+                    <div class="music-title">{{ item.title }}</div>
+                    <div class="music-meta">
+                      <span>{{ formatDuration(item.duration_sec) }}</span>
+                      <span>{{ item.source === 'ai' ? 'AI' : '' }}</span>
+                    </div>
+                    <div class="music-progress">
+                      <div class="music-progress-bar" :style="{ width: musicProgressFor(item) + '%' }"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="empty-panel">暂无生成记录</div>
+            </div>
+
+            <div v-else class="info-card">
+              <div class="info-title">音乐库</div>
+              <div class="music-upload">
+                <input
+                  ref="musicFileInputRef"
+                  type="file"
+                  accept="audio/*"
+                  class="file-input"
+                  @change="handleMusicUpload"
+                />
+                <button class="pill-btn" :disabled="isUploadingMusic" @click="triggerMusicUpload">
+                  {{ isUploadingMusic ? '上传中…' : '从本地上传' }}
+                </button>
+              </div>
+              <div class="music-list">
+                <div
+                  v-for="item in musicLibrary"
+                  :key="item.id"
+                  :class="['music-card', { active: item.id === selectedMusicId }]"
+                  @click="selectMusicItem(item)"
+                >
+                  <div class="music-cover" :style="{ background: item.cover_style || defaultCoverStyle }"></div>
+                  <div class="music-info">
+                    <div class="music-title">{{ item.title }}</div>
+                    <div class="music-meta">
+                      <span>{{ formatDuration(item.duration_sec) }}</span>
+                      <span>{{ item.source === 'library' ? '库' : '上传' }}</span>
+                    </div>
+                    <div class="music-progress">
+                      <div class="music-progress-bar" :style="{ width: musicProgressFor(item) + '%' }"></div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="musicLibrary.length === 0" class="empty-panel">暂无音乐</div>
+              </div>
+              <div v-if="musicError" class="status-error">{{ musicError }}</div>
+            </div>
+
+            <div class="music-footer">
+              <div class="slider-row">
+                <span class="label">音量</span>
+                <input v-model.number="musicVolume" type="range" min="0" max="100" step="1" />
+                <span class="value">{{ musicVolume }}</span>
+              </div>
+              <button class="pill-btn primary" :disabled="!selectedMusicId" @click="applyMusicToShot">
+                应用
+              </button>
+            </div>
+          </template>
         </div>
         <div v-else class="empty-panel">暂无分镜素材，请先生成素材包。</div>
       </div>
@@ -429,6 +632,58 @@
         </div>
       </div>
     </div>
+
+    <div v-if="showVoicePicker" class="modal-backdrop">
+      <div class="modal-card">
+        <div class="modal-title">选择音色</div>
+        <div class="voice-list">
+          <button
+            v-for="voice in voiceOptions"
+            :key="voice.id"
+            :class="['voice-option', { active: voice.id === selectedVoiceId }]"
+            @click="pickVoice(voice)"
+          >
+            <div class="voice-name">{{ voice.name }}</div>
+            <div class="voice-meta">
+              <span>{{ voice.gender || '未知' }}</span>
+              <span>{{ voice.age_group || '-' }}</span>
+              <span>{{ voice.locale || '' }}</span>
+            </div>
+            <div class="voice-desc">{{ voice.description || '适合通用旁白' }}</div>
+          </button>
+          <div v-if="voiceOptions.length === 0" class="empty-text">暂无可用音色</div>
+        </div>
+        <div class="modal-actions">
+          <button class="pill-btn ghost" @click="showVoicePicker = false">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showRolePicker" class="modal-backdrop">
+      <div class="modal-card">
+        <div class="modal-title">选择角色</div>
+        <div class="role-list">
+          <button
+            v-for="role in voiceRoles"
+            :key="role.id"
+            :class="['role-option', { active: role.id === roleSelectionId }]"
+            @click="roleSelectionId = role.id"
+          >
+            <span class="role-name">{{ role.name }}</span>
+            <span class="role-meta">{{ role.voice_id || '未绑定音色' }}</span>
+          </button>
+          <div v-if="voiceRoles.length === 0" class="empty-text">暂无角色，请新建</div>
+        </div>
+        <div class="role-create">
+          <input v-model="roleDraftName" class="prompt-editor" placeholder="新建角色名称" />
+          <button class="pill-btn" @click="createRoleAndBind">创建并绑定</button>
+        </div>
+        <div class="modal-actions">
+          <button class="pill-btn ghost" @click="closeRolePicker">取消</button>
+          <button class="pill-btn primary" :disabled="!roleSelectionId" @click="confirmRolePicker">确认绑定</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -454,6 +709,9 @@ import {
 import { adoptImage, regenerateImage, rewriteImagePrompt } from '@/api/images';
 import { fetchModels, type ModelOption } from '@/api/models';
 import { fetchProject } from '@/api/projects';
+import { fetchVoiceOptions, generateStoryboardAudio, previewTts, type VoiceOption } from '@/api/tts';
+import { createVoiceRole, fetchVoiceRoles, updateVoiceRole, type VoiceRole } from '@/api/voiceRoles';
+import { applyStoryboardMusic, fetchMusicLibrary, generateMusic, uploadMusic, type MusicItem } from '@/api/music';
 
 interface Clip {
   id: string;
@@ -470,6 +728,15 @@ interface Clip {
   prompt: string;
   imageId: string;
   imageUrl: string;
+  audioId?: string;
+  audioUrl?: string;
+  audioText?: string;
+  audioDurationSec?: number;
+  audioVoiceId?: string;
+  audioEmotion?: string;
+  audioVolume?: number;
+  audioSpeed?: number;
+  audioRoleId?: string;
   status: 'ready' | 'pending';
   type: 'image' | 'video';
 }
@@ -481,12 +748,35 @@ const packageName = ref('');
 const currentPackageId = ref<string | null>(null);
 const clips = ref<Clip[]>([]);
 const viewMode = ref<'timeline' | 'story'>('timeline');
+const leftTab = ref<'visual' | 'voice' | 'music'>('visual');
+const musicTab = ref<'ai' | 'library'>('ai');
 
 const currentShotIndex = ref(0);
 const currentTimeSec = ref(0);
 const timelineRef = ref<HTMLElement | null>(null);
 
 const currentClip = computed(() => clips.value[currentShotIndex.value] || null);
+const narrationCount = computed(() => narrationText.value.length);
+const narrationOverLimit = computed(() => narrationCount.value > narrationLimit);
+const narrationDurationSec = computed(() => {
+  if (!narrationCount.value) return 0;
+  const safeSpeed = Math.max(0.1, voiceSpeed.value);
+  return Math.max(1, Math.round((narrationCount.value * 0.12) / safeSpeed));
+});
+const narrationDurationLabel = computed(() => {
+  if (!narrationCount.value) return '未输入';
+  return `约 ${narrationDurationSec.value}s 音频`;
+});
+const selectedVoiceOption = computed(() => {
+  return voiceOptions.value.find(item => item.id === selectedVoiceId.value) || voiceOptions.value[0] || null;
+});
+const selectedVoiceRole = computed(() => {
+  if (!selectedRoleId.value) return null;
+  return voiceRoles.value.find(item => item.id === selectedRoleId.value) || null;
+});
+const musicPromptCount = computed(() => musicPrompt.value.length);
+const musicPromptOverLimit = computed(() => musicPromptCount.value > musicPromptLimit);
+const defaultCoverStyle = 'linear-gradient(135deg, #c7d2fe, #fbcfe8)';
 const isGeneratingStoryboard = ref(false);
 const storyboardError = ref('');
 const storyboardRetryCount = ref(0);
@@ -524,6 +814,42 @@ const imageModels = ref<ModelOption[]>([]);
 const videoModels = ref<ModelOption[]>([]);
 const selectedImageModelId = ref('');
 const selectedVideoModelId = ref('');
+const voiceOptions = ref<VoiceOption[]>([]);
+const voiceRoles = ref<VoiceRole[]>([]);
+const showVoicePicker = ref(false);
+const showRolePicker = ref(false);
+const rolePickerMode = ref<'voice' | 'params' | null>(null);
+const roleSelectionId = ref('');
+const roleDraftName = ref('');
+const narrationText = ref('');
+const narrationLimit = 240;
+const selectedVoiceId = ref('');
+const selectedEmotion = ref('默认');
+const voiceVolume = ref(100);
+const voiceSpeed = ref(1.0);
+const bindVoiceToRole = ref(false);
+const bindParamsToRole = ref(false);
+const selectedRoleId = ref('');
+const isPreviewingTts = ref(false);
+const isGeneratingTts = ref(false);
+const ttsError = ref('');
+const previewAudio = ref<HTMLAudioElement | null>(null);
+const previewAudioUrl = ref('');
+const emotionOptions = ['默认', '开心', '悲伤', '愤怒', '温柔', '激动'];
+const musicPrompt = ref('');
+const musicPromptLimit = 30;
+const isGeneratingMusic = ref(false);
+const isUploadingMusic = ref(false);
+const musicError = ref('');
+const musicLibrary = ref<MusicItem[]>([]);
+const musicAiResults = ref<MusicItem[]>([]);
+const selectedMusicId = ref('');
+const musicVolume = ref(35);
+const musicFileInputRef = ref<HTMLInputElement | null>(null);
+const musicPreviewAudio = ref<HTMLAudioElement | null>(null);
+const musicPlayingId = ref('');
+const musicPlayingTime = ref(0);
+const musicPlayingDuration = ref(0);
 const showExportModal = ref(false);
 const exportTaskId = ref('');
 const exportStatus = ref<'idle' | 'running' | 'completed' | 'failed'>('idle');
@@ -1110,6 +1436,8 @@ const buildClipsFromPackage = (pkg: MaterialPackage) => {
   const scenesRaw = Array.isArray(blueprint.scenes) ? blueprint.scenes : [];
   let storyboardRaw = Array.isArray(blueprint.storyboard) ? blueprint.storyboard : [];
   const imagesRaw = Array.isArray(metadata.images) ? metadata.images : [];
+  const audiosRaw = Array.isArray(metadata.audios) ? metadata.audios : [];
+  const musicBindingsRaw = Array.isArray(metadata.music_bindings) ? metadata.music_bindings : [];
 
   const sceneNameById = new Map<string, string>();
   const scenePromptById = new Map<string, string>();
@@ -1149,6 +1477,30 @@ const buildClipsFromPackage = (pkg: MaterialPackage) => {
     }
   });
 
+  const storyboardAudioByShot = new Map<string, any>();
+  audiosRaw.forEach((audio: any) => {
+    if (!audio || typeof audio !== 'object') return;
+    if (audio.type !== 'storyboard_audio') return;
+    const shotId = normalizeText(audio.shot_id || audio.shotId, '');
+    if (!shotId) return;
+    const isActive = audio.is_active === true || audio.isActive === true;
+    if (isActive || !storyboardAudioByShot.has(shotId)) {
+      storyboardAudioByShot.set(shotId, audio);
+    }
+  });
+
+  const storyboardMusicByShot = new Map<string, any>();
+  musicBindingsRaw.forEach((binding: any) => {
+    if (!binding || typeof binding !== 'object') return;
+    if (binding.type !== 'storyboard_music') return;
+    const shotId = normalizeText(binding.shot_id || binding.shotId, '');
+    if (!shotId) return;
+    const isActive = binding.is_active === true || binding.isActive === true;
+    if (isActive || !storyboardMusicByShot.has(shotId)) {
+      storyboardMusicByShot.set(shotId, binding);
+    }
+  });
+
   const clipList: Clip[] = storyboardRaw.map((shot: any, index: number) => {
     const shotNumber = typeof shot?.shot_number === 'number' ? shot.shot_number : index + 1;
     const shotId = normalizeText(shot?.id, `shot_${shotNumber}`);
@@ -1165,6 +1517,8 @@ const buildClipsFromPackage = (pkg: MaterialPackage) => {
     const imageUrl = imageData?.url || '';
     const imageId = imageData?.id || '';
     const status: Clip['status'] = imageUrl ? 'ready' : 'pending';
+    const audioData = storyboardAudioByShot.get(shotId);
+    const musicData = storyboardMusicByShot.get(shotId);
 
     return {
       id: shotId,
@@ -1181,6 +1535,19 @@ const buildClipsFromPackage = (pkg: MaterialPackage) => {
       prompt,
       imageId,
       imageUrl,
+      audioId: normalizeText(audioData?.id, ''),
+      audioUrl: normalizeText(audioData?.url, ''),
+      audioText: normalizeText(audioData?.text, ''),
+      audioDurationSec: typeof audioData?.duration_sec === 'number' ? audioData.duration_sec : undefined,
+      audioVoiceId: normalizeText(audioData?.voice_id, ''),
+      audioEmotion: normalizeText(audioData?.emotion, ''),
+      audioVolume: typeof audioData?.volume === 'number' ? audioData.volume : undefined,
+      audioSpeed: typeof audioData?.speed === 'number' ? audioData.speed : undefined,
+      audioRoleId: normalizeText(audioData?.role_id, ''),
+      musicId: normalizeText(musicData?.music_id, ''),
+      musicTitle: normalizeText(musicData?.music_title, ''),
+      musicUrl: normalizeText(musicData?.music_url, ''),
+      musicVolume: typeof musicData?.volume === 'number' ? musicData.volume : undefined,
       status,
       type: 'image',
     };
@@ -1259,6 +1626,348 @@ const buildVideoStateFromPackage = (pkg: MaterialPackage, clipList: Clip[]) => {
     }
   });
   videoState.value = nextState;
+};
+
+const resolveProjectId = () => sessionStorage.getItem('currentProjectId') || '';
+
+const loadVoiceAssets = async () => {
+  const projectId = resolveProjectId();
+  if (!projectId) return;
+  try {
+    const [voices, roles] = await Promise.all([fetchVoiceOptions(), fetchVoiceRoles(projectId)]);
+    voiceOptions.value = voices;
+    voiceRoles.value = roles;
+    if (!selectedVoiceId.value && voices.length) {
+      selectedVoiceId.value = voices[0].id;
+    }
+  } catch (err) {
+    // Ignore to avoid blocking editor load.
+  }
+};
+
+const syncVoicePanelFromClip = (clip: Clip | null) => {
+  if (!clip) {
+    narrationText.value = '';
+    previewAudioUrl.value = '';
+    ttsError.value = '';
+    return;
+  }
+  stopNarrationPreview();
+  narrationText.value = clip.audioText || '';
+  voiceVolume.value = clip.audioVolume ?? 100;
+  voiceSpeed.value = clip.audioSpeed ?? 1.0;
+  selectedEmotion.value = clip.audioEmotion || '默认';
+  if (clip.audioVoiceId) {
+    selectedVoiceId.value = clip.audioVoiceId;
+  } else if (!selectedVoiceId.value && voiceOptions.value.length) {
+    selectedVoiceId.value = voiceOptions.value[0].id;
+  }
+  selectedRoleId.value = clip.audioRoleId || '';
+  bindVoiceToRole.value = Boolean(clip.audioRoleId);
+  bindParamsToRole.value = Boolean(clip.audioRoleId);
+  previewAudioUrl.value = clip.audioUrl || '';
+  ttsError.value = '';
+};
+
+const syncMusicPanelFromClip = (clip: Clip | null) => {
+  if (!clip) {
+    selectedMusicId.value = '';
+    musicVolume.value = 35;
+    return;
+  }
+  selectedMusicId.value = clip.musicId || '';
+  musicVolume.value = typeof clip.musicVolume === 'number' ? clip.musicVolume : 35;
+  stopMusicPreview();
+};
+
+const pickVoice = (voice: VoiceOption) => {
+  selectedVoiceId.value = voice.id;
+  showVoicePicker.value = false;
+};
+
+const openRolePicker = (mode: 'voice' | 'params') => {
+  rolePickerMode.value = mode;
+  roleSelectionId.value = selectedRoleId.value;
+  roleDraftName.value = '';
+  showRolePicker.value = true;
+};
+
+const closeRolePicker = () => {
+  showRolePicker.value = false;
+  rolePickerMode.value = null;
+};
+
+const confirmRolePicker = () => {
+  if (!roleSelectionId.value) return;
+  selectedRoleId.value = roleSelectionId.value;
+  showRolePicker.value = false;
+  rolePickerMode.value = null;
+};
+
+const createRoleAndBind = async () => {
+  const name = roleDraftName.value.trim();
+  if (!name) {
+    alert('请输入角色名称');
+    return;
+  }
+  const projectId = resolveProjectId();
+  if (!projectId) {
+    alert('缺少项目 ID');
+    return;
+  }
+  try {
+    const role = await createVoiceRole({
+      project_id: projectId,
+      name,
+      voice_id: selectedVoiceId.value || undefined,
+      emotion: selectedEmotion.value !== '默认' ? selectedEmotion.value : undefined,
+      volume: voiceVolume.value,
+      speed: voiceSpeed.value,
+    });
+    voiceRoles.value = [role, ...voiceRoles.value.filter(item => item.id !== role.id)];
+    selectedRoleId.value = role.id;
+    roleSelectionId.value = role.id;
+    showRolePicker.value = false;
+  } catch (err) {
+    alert(err instanceof Error ? err.message : '创建角色失败');
+  }
+};
+
+const handleRoleBinding = (mode: 'voice' | 'params') => {
+  const needsRole = bindVoiceToRole.value || bindParamsToRole.value;
+  if (needsRole && !selectedRoleId.value) {
+    openRolePicker(mode);
+  }
+};
+
+const syncRoleSettings = async () => {
+  if (!selectedRoleId.value) return;
+  try {
+    const role = await updateVoiceRole(selectedRoleId.value, {
+      voice_id: selectedVoiceId.value || undefined,
+      emotion: selectedEmotion.value !== '默认' ? selectedEmotion.value : undefined,
+      volume: voiceVolume.value,
+      speed: voiceSpeed.value,
+    });
+    voiceRoles.value = [role, ...voiceRoles.value.filter(item => item.id !== role.id)];
+  } catch (err) {
+    // Ignore to avoid blocking TTS apply.
+  }
+};
+
+const loadMusicLibrary = async () => {
+  const projectId = resolveProjectId();
+  if (!projectId) return;
+  try {
+    const list = await fetchMusicLibrary(projectId);
+    musicLibrary.value = list;
+    musicAiResults.value = list.filter(item => item.source === 'ai');
+  } catch (err) {
+    musicError.value = err instanceof Error ? err.message : '加载音乐库失败';
+  }
+};
+
+const formatDuration = (seconds?: number) => {
+  if (!seconds || seconds <= 0) return '--:--';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+};
+
+const musicProgressFor = (item: MusicItem) => {
+  if (musicPlayingId.value !== item.id || !musicPlayingDuration.value) return 0;
+  return Math.min(100, (musicPlayingTime.value / musicPlayingDuration.value) * 100);
+};
+
+const stopMusicPreview = () => {
+  if (musicPreviewAudio.value) {
+    musicPreviewAudio.value.pause();
+    musicPreviewAudio.value.currentTime = 0;
+  }
+  musicPreviewAudio.value = null;
+  musicPlayingId.value = '';
+  musicPlayingTime.value = 0;
+  musicPlayingDuration.value = 0;
+};
+
+const playMusicPreview = (item: MusicItem) => {
+  if (!item.url) return;
+  if (musicPlayingId.value === item.id && musicPreviewAudio.value) {
+    stopMusicPreview();
+    return;
+  }
+  stopMusicPreview();
+  const audio = new Audio(item.url);
+  musicPreviewAudio.value = audio;
+  musicPlayingId.value = item.id;
+  musicPlayingDuration.value = item.duration_sec || 0;
+  audio.addEventListener('timeupdate', () => {
+    musicPlayingTime.value = audio.currentTime;
+    if (!musicPlayingDuration.value && audio.duration) {
+      musicPlayingDuration.value = audio.duration;
+    }
+  });
+  audio.addEventListener('ended', () => {
+    stopMusicPreview();
+  });
+  audio.play().catch(() => {
+    stopMusicPreview();
+  });
+};
+
+const selectMusicItem = (item: MusicItem) => {
+  selectedMusicId.value = item.id;
+  playMusicPreview(item);
+};
+
+const generateMusicTrack = async () => {
+  const projectId = resolveProjectId();
+  if (!projectId) {
+    alert('缺少项目 ID');
+    return;
+  }
+  if (!musicPrompt.value.trim() || musicPromptOverLimit.value) {
+    alert('请输入简短的音乐描述');
+    return;
+  }
+  isGeneratingMusic.value = true;
+  musicError.value = '';
+  try {
+    const track = await generateMusic({ project_id: projectId, prompt: musicPrompt.value.trim() });
+    musicAiResults.value = [track, ...musicAiResults.value.filter(item => item.id !== track.id)];
+    musicLibrary.value = [track, ...musicLibrary.value.filter(item => item.id !== track.id)];
+    selectedMusicId.value = track.id;
+    musicPrompt.value = '';
+  } catch (err) {
+    musicError.value = err instanceof Error ? err.message : '生成音乐失败';
+  } finally {
+    isGeneratingMusic.value = false;
+  }
+};
+
+const triggerMusicUpload = () => {
+  musicFileInputRef.value?.click();
+};
+
+const handleMusicUpload = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const files = target.files ? Array.from(target.files) : [];
+  if (!files.length) return;
+  const projectId = resolveProjectId();
+  if (!projectId) return;
+  isUploadingMusic.value = true;
+  try {
+    const track = await uploadMusic(projectId, files[0]);
+    musicLibrary.value = [track, ...musicLibrary.value.filter(item => item.id !== track.id)];
+    selectedMusicId.value = track.id;
+  } catch (err) {
+    musicError.value = err instanceof Error ? err.message : '上传音乐失败';
+  } finally {
+    isUploadingMusic.value = false;
+    target.value = '';
+  }
+};
+
+const applyMusicToShot = async () => {
+  const clip = currentClip.value;
+  if (!clip || !currentPackageId.value) return;
+  if (!selectedMusicId.value) {
+    alert('请选择音乐');
+    return;
+  }
+  try {
+    await applyStoryboardMusic(currentPackageId.value, clip.shotId, {
+      music_id: selectedMusicId.value,
+      volume: musicVolume.value,
+    });
+    await refreshPackage(currentPackageId.value, clip.shotId);
+  } catch (err) {
+    musicError.value = err instanceof Error ? err.message : '应用音乐失败';
+  }
+};
+
+const previewNarration = async () => {
+  if (!narrationText.value.trim() || narrationOverLimit.value) return;
+  const projectId = resolveProjectId();
+  if (!projectId) {
+    alert('缺少项目 ID');
+    return;
+  }
+  if (!selectedVoiceId.value && voiceOptions.value.length) {
+    selectedVoiceId.value = voiceOptions.value[0].id;
+  }
+  if (!selectedVoiceId.value) {
+    alert('请先选择音色');
+    return;
+  }
+  isPreviewingTts.value = true;
+  ttsError.value = '';
+  try {
+    const audio = await previewTts({
+      project_id: projectId,
+      text: narrationText.value.trim(),
+      voice_id: selectedVoiceId.value,
+      emotion: selectedEmotion.value !== '默认' ? selectedEmotion.value : undefined,
+      speed: voiceSpeed.value,
+      volume: voiceVolume.value,
+    });
+    previewAudioUrl.value = audio.url;
+    if (previewAudio.value) {
+      previewAudio.value.pause();
+      previewAudio.value = null;
+    }
+    const audioPlayer = new Audio(audio.url);
+    previewAudio.value = audioPlayer;
+    await audioPlayer.play();
+    audioPlayer.onended = () => {
+      isPreviewingTts.value = false;
+    };
+  } catch (err) {
+    ttsError.value = err instanceof Error ? err.message : '生成试听音频失败';
+    isPreviewingTts.value = false;
+  }
+};
+
+function stopNarrationPreview() {
+  if (previewAudio.value) {
+    previewAudio.value.pause();
+    previewAudio.value.currentTime = 0;
+  }
+  isPreviewingTts.value = false;
+}
+
+const applyNarration = async () => {
+  const clip = currentClip.value;
+  if (!clip || !currentPackageId.value) return;
+  if (!narrationText.value.trim() || narrationOverLimit.value) return;
+  if (!selectedVoiceId.value) {
+    alert('请先选择音色');
+    return;
+  }
+  if ((bindVoiceToRole.value || bindParamsToRole.value) && !selectedRoleId.value) {
+    openRolePicker('voice');
+    return;
+  }
+  isGeneratingTts.value = true;
+  ttsError.value = '';
+  try {
+    await generateStoryboardAudio(currentPackageId.value, clip.shotId, {
+      text: narrationText.value.trim(),
+      voice_id: selectedVoiceId.value,
+      emotion: selectedEmotion.value !== '默认' ? selectedEmotion.value : undefined,
+      speed: voiceSpeed.value,
+      volume: voiceVolume.value,
+      role_id: selectedRoleId.value || undefined,
+    });
+    if (bindVoiceToRole.value || bindParamsToRole.value) {
+      await syncRoleSettings();
+    }
+    await refreshPackage(currentPackageId.value, clip.shotId);
+  } catch (err) {
+    ttsError.value = err instanceof Error ? err.message : '生成配音失败';
+  } finally {
+    isGeneratingTts.value = false;
+  }
 };
 
 const hasMissingStoryboardImages = (pkg: MaterialPackage) => {
@@ -1547,6 +2256,33 @@ watch(
   }
 );
 
+watch(
+  () => currentClip.value,
+  clip => {
+    syncVoicePanelFromClip(clip);
+    syncMusicPanelFromClip(clip);
+  },
+  { immediate: true }
+);
+
+watch(
+  () => narrationText.value,
+  value => {
+    if (value.length > narrationLimit) {
+      narrationText.value = value.slice(0, narrationLimit);
+    }
+  }
+);
+
+watch(
+  () => musicPrompt.value,
+  value => {
+    if (value.length > musicPromptLimit) {
+      musicPrompt.value = value.slice(0, musicPromptLimit);
+    }
+  }
+);
+
 const goBack = () => {
   router.push('/materials');
 };
@@ -1570,11 +2306,14 @@ onMounted(() => {
     .catch(() => {
       videoModels.value = [];
     });
+  loadVoiceAssets();
+  loadMusicLibrary();
   loadEditorData();
 });
 
 onUnmounted(() => {
   stopPlayback();
+  stopMusicPreview();
   stopVideoPolling();
   stopExportPolling();
   clearStoryboardRetry();
@@ -1625,25 +2364,26 @@ onUnmounted(() => {
 .tag {
   padding: 4px 8px;
   border-radius: 10px;
-  background: var(--md-surface-container-low);
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: rgba(10, 16, 28, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.3);
 }
 
 .floating-ops {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--md-surface-container);
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid var(--md-stroke);
   border-radius: 9999px;
   padding: 8px 12px;
+  box-shadow: 0 12px 24px rgba(2, 6, 23, 0.35);
 }
 
 .pill-btn {
   padding: 8px 14px;
   border-radius: 9999px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container-low);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.75);
   color: var(--md-on-surface);
   font-size: 13px;
   cursor: pointer;
@@ -1651,8 +2391,8 @@ onUnmounted(() => {
 }
 
 .pill-btn:hover {
-  border-color: rgba(121, 116, 126, 0.35);
-  background: rgba(103, 80, 164, 0.1);
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(var(--md-accent-rgb), 0.1);
 }
 
 .pill-btn:disabled {
@@ -1661,14 +2401,14 @@ onUnmounted(() => {
 }
 
 .pill-btn.primary {
-  background: var(--md-primary);
-  color: var(--md-on-primary);
+  background: linear-gradient(135deg, rgba(var(--md-accent-rgb), 0.9), rgba(var(--md-accent-2-rgb), 0.85));
+  color: #031019;
   font-weight: 700;
 }
 
 .pill-btn.ghost {
   background: transparent;
-  border-color: rgba(121, 116, 126, 0.2);
+  border-color: rgba(148, 163, 184, 0.2);
 }
 
 .editor-layout {
@@ -1680,11 +2420,57 @@ onUnmounted(() => {
 }
 
 .editor-left {
-  background: var(--md-surface-container);
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: var(--md-surface-card);
+  border: 1px solid var(--md-stroke);
   border-radius: 16px;
   padding: 12px;
   overflow-y: auto;
+  box-shadow: var(--md-card-shadow-soft);
+}
+
+.panel-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tab-btn {
+  flex: 1;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.7);
+  color: var(--md-on-surface-variant);
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  border-color: rgba(var(--md-accent-rgb), 0.6);
+  color: var(--md-primary);
+  background: rgba(var(--md-accent-rgb), 0.12);
+}
+
+.music-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.music-tab {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.7);
+  color: var(--md-on-surface-variant);
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.music-tab.active {
+  background: rgba(var(--md-accent-rgb), 0.12);
+  color: var(--md-on-surface);
 }
 
 .shot-panel {
@@ -1720,7 +2506,7 @@ onUnmounted(() => {
   font-size: 12px;
   padding: 6px 10px;
   border-radius: 10px;
-  background: rgba(103, 80, 164, 0.12);
+  background: rgba(var(--md-accent-rgb), 0.12);
   color: var(--md-on-surface);
   width: fit-content;
 }
@@ -1733,8 +2519,89 @@ onUnmounted(() => {
 .info-card {
   border-radius: 12px;
   padding: 12px;
-  background: var(--md-surface-container-low);
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: rgba(10, 16, 28, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.voice-card {
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  padding: 8px;
+  cursor: pointer;
+  background: rgba(10, 16, 28, 0.85);
+  margin-bottom: 10px;
+}
+
+.voice-card .voice-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.voice-card .voice-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--md-on-surface-variant);
+  display: flex;
+  gap: 6px;
+}
+
+.row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.count-label {
+  font-size: 11px;
+  color: var(--md-on-surface-variant);
+}
+
+.count-label.warn {
+  color: #b42318;
+}
+
+.count-hint {
+  font-size: 11px;
+  color: var(--md-on-surface-variant);
+}
+
+.slider-row {
+  display: grid;
+  grid-template-columns: 48px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.slider-row input[type="range"] {
+  width: 100%;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.role-note {
+  font-size: 11px;
+  color: var(--md-on-surface-variant);
+  margin-top: 4px;
+}
+
+.status-note {
+  font-size: 11px;
+  color: var(--md-on-surface-variant);
+}
+
+.status-error {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #b42318;
 }
 
 .collapse-header {
@@ -1803,8 +2670,8 @@ onUnmounted(() => {
 .model-select {
   flex: 1;
   border-radius: 10px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface);
+  border: 1px solid var(--md-stroke);
+  background: var(--md-field-bg);
   color: var(--md-on-surface);
   padding: 6px 8px;
   font-size: 12px;
@@ -1827,7 +2694,7 @@ onUnmounted(() => {
 .prompt-readonly {
   font-size: 12px;
   color: var(--md-on-surface);
-  background: rgba(121, 116, 126, 0.12);
+  background: rgba(10, 16, 28, 0.75);
   border-radius: 10px;
   padding: 10px;
   line-height: 1.5;
@@ -1835,14 +2702,19 @@ onUnmounted(() => {
   white-space: pre-wrap;
 }
 
-.prompt-editor {
+.prompt-editor,
+.file-input {
   width: 100%;
   border-radius: 10px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface);
+  border: 1px solid var(--md-stroke);
+  background: var(--md-field-bg);
   color: var(--md-on-surface);
   padding: 8px;
   resize: vertical;
+}
+
+.file-input {
+  display: none;
 }
 
 .modal-backdrop {
@@ -1858,13 +2730,138 @@ onUnmounted(() => {
 
 .modal-card {
   width: min(420px, 90vw);
-  background: var(--md-surface-container);
+  background: var(--md-surface-card);
   border-radius: 16px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
+  border: 1px solid var(--md-stroke);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.voice-list,
+.role-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.voice-option,
+.role-option {
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.85);
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.voice-option.active,
+.role-option.active {
+  border-color: rgba(var(--md-accent-rgb), 0.6);
+  box-shadow: 0 0 0 2px rgba(var(--md-accent-rgb), 0.2);
+}
+
+.voice-desc {
+  font-size: 11px;
+  color: var(--md-on-surface-variant);
+  margin-top: 4px;
+}
+
+.role-create {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.role-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.role-meta {
+  font-size: 11px;
+  color: var(--md-on-surface-variant);
+  margin-left: 6px;
+}
+
+.music-input {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.music-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.music-card {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 10px;
+  align-items: center;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  padding: 10px;
+  cursor: pointer;
+  background: rgba(10, 16, 28, 0.85);
+}
+
+.music-card.active {
+  border-color: rgba(var(--md-accent-rgb), 0.6);
+  box-shadow: 0 0 0 2px rgba(var(--md-accent-rgb), 0.2);
+}
+
+.music-cover {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+}
+
+.music-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.music-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--md-on-surface-variant);
+  margin-top: 4px;
+}
+
+.music-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.music-progress-bar {
+  height: 100%;
+  background: var(--md-primary);
+}
+
+.music-upload {
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.music-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
 }
 
 .export-modal {
@@ -1880,7 +2877,8 @@ onUnmounted(() => {
 .export-section {
   padding: 8px 10px;
   border-radius: 12px;
-  background: rgba(121, 116, 126, 0.08);
+  background: rgba(10, 16, 28, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .export-note {
@@ -1911,7 +2909,8 @@ onUnmounted(() => {
   gap: 12px;
   padding: 8px 10px;
   border-radius: 10px;
-  background: rgba(121, 116, 126, 0.12);
+  background: rgba(10, 16, 28, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .export-file-meta {
@@ -1924,8 +2923,8 @@ onUnmounted(() => {
 .text-input {
   width: 100%;
   border-radius: 10px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface);
+  border: 1px solid var(--md-stroke);
+  background: var(--md-field-bg);
   color: var(--md-on-surface);
   padding: 6px 8px;
   font-size: 12px;
@@ -1957,8 +2956,8 @@ onUnmounted(() => {
 }
 
 .editor-center {
-  background: var(--md-surface-container-low);
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: var(--md-surface-card);
+  border: 1px solid var(--md-stroke);
   border-radius: 16px;
   display: flex;
   flex-direction: column;
@@ -1966,6 +2965,7 @@ onUnmounted(() => {
   justify-content: center;
   gap: 12px;
   padding: 16px;
+  box-shadow: var(--md-card-shadow);
 }
 
 .drag-bar {
@@ -1979,7 +2979,7 @@ onUnmounted(() => {
 .drag-bar .rail {
   width: 2px;
   height: 52px;
-  background: rgba(121, 116, 126, 0.4);
+  background: rgba(148, 163, 184, 0.45);
   border-radius: 10px;
 }
 
@@ -1999,12 +2999,12 @@ onUnmounted(() => {
 .canvas {
   width: min(360px, 90%);
   aspect-ratio: 3 / 4;
-  background: linear-gradient(180deg, #3b3b3b, #222);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.95));
   border-radius: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.25);
   position: relative;
   overflow: hidden;
 }
@@ -2053,10 +3053,11 @@ onUnmounted(() => {
 
 .timeline-panel {
   margin-top: 16px;
-  background: var(--md-surface-container-low);
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: var(--md-surface-card);
+  border: 1px solid var(--md-stroke);
   border-radius: 16px;
   padding: 12px;
+  box-shadow: var(--md-card-shadow-soft);
 }
 
 .timeline-header {
@@ -2076,17 +3077,17 @@ onUnmounted(() => {
 .view-btn {
   padding: 6px 12px;
   border-radius: 9999px;
-  border: 1px solid rgba(121, 116, 126, 0.3);
-  background: var(--md-surface-container);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(10, 16, 28, 0.75);
   color: var(--md-on-surface);
   cursor: pointer;
   font-size: 12px;
 }
 
 .view-btn.active {
-  background: var(--md-primary);
-  color: var(--md-on-primary);
-  border-color: transparent;
+  background: linear-gradient(135deg, rgba(var(--md-accent-rgb), 0.9), rgba(var(--md-accent-2-rgb), 0.8));
+  color: #031019;
+  border-color: rgba(var(--md-accent-rgb), 0.4);
 }
 
 .timeline-actions {
@@ -2167,8 +3168,8 @@ onUnmounted(() => {
   gap: 6px;
   border-radius: 12px;
   padding: 6px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.85);
   cursor: pointer;
   position: relative;
   width: 100%;
@@ -2245,8 +3246,8 @@ onUnmounted(() => {
 
 .story-card {
   border-radius: 14px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(10, 16, 28, 0.85);
   padding: 10px;
   display: flex;
   flex-direction: column;

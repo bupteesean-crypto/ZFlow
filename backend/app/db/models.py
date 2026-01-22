@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 
 from app.db.base import Base
 
@@ -45,6 +45,21 @@ class MaterialPackage(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
 
 
+class VoiceRole(Base):
+    __tablename__ = "voice_roles"
+
+    id = Column(String(36), primary_key=True, index=True)
+    project_id = Column(String(36), ForeignKey("projects.id"), nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    voice_id = Column(String(120), nullable=True)
+    emotion = Column(String(50), nullable=True)
+    volume = Column(Integer, nullable=False, default=100)
+    speed = Column(Float, nullable=False, default=1.0)
+    metadata_json = Column("metadata", JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
 def to_project_dict(project: Project) -> dict[str, Any]:
     return {
         "id": project.id,
@@ -78,4 +93,19 @@ def to_material_package_dict(package: MaterialPackage) -> dict[str, Any]:
         "generated_at": package.generated_at.isoformat() if package.generated_at else None,
         "created_at": package.created_at.isoformat() if package.created_at else None,
         "updated_at": package.updated_at.isoformat() if package.updated_at else None,
+    }
+
+
+def to_voice_role_dict(role: VoiceRole) -> dict[str, Any]:
+    return {
+        "id": role.id,
+        "project_id": role.project_id,
+        "name": role.name,
+        "voice_id": role.voice_id,
+        "emotion": role.emotion,
+        "volume": role.volume,
+        "speed": role.speed,
+        "metadata": role.metadata_json or {},
+        "created_at": role.created_at.isoformat() if role.created_at else None,
+        "updated_at": role.updated_at.isoformat() if role.updated_at else None,
     }

@@ -95,36 +95,36 @@ const handleClick = (e: Event) => {
 
 /* Variants */
 .z-btn--primary {
-  background: linear-gradient(135deg, rgba(108, 249, 224, 0.9), rgba(124, 93, 255, 0.9));
-  color: #0b111d;
+  background: linear-gradient(135deg, rgba(var(--md-accent-rgb), 0.95), rgba(var(--md-accent-2-rgb), 0.9));
+  color: #031019;
   border-color: transparent;
 }
 
 .z-btn--primary:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 10px 30px rgba(108, 249, 224, 0.25);
+  box-shadow: 0 12px 28px rgba(77, 231, 255, 0.25);
 }
 
 .z-btn--secondary {
-  background: rgba(255, 255, 255, 0.08);
-  color: #e5e9ff;
-  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(148, 163, 184, 0.08);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.2);
 }
 
 .z-btn--secondary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(108, 249, 224, 0.35);
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(var(--md-accent-rgb), 0.35);
 }
 
 .z-btn--ghost {
   background: transparent;
-  color: #e5e7eb;
-  border-color: rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.2);
 }
 
 .z-btn--ghost:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.35);
 }
 
 .z-btn--danger {

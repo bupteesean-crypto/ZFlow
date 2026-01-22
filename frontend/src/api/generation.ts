@@ -23,9 +23,18 @@ export async function startGeneration(
   projectId: string,
   prompt?: string,
   mode?: string,
-  imageModelId?: string
+  imageModelId?: string,
+  documents?: Record<string, any>[],
+  inputConfig?: Record<string, any>
 ): Promise<GenerationTask> {
-  const payload: { project_id: string; prompt?: string; mode?: string; image_model_id?: string } = {
+  const payload: {
+    project_id: string;
+    prompt?: string;
+    mode?: string;
+    image_model_id?: string;
+    documents?: Record<string, any>[];
+    input_config?: Record<string, any>;
+  } = {
     project_id: projectId,
   };
   if (prompt) {
@@ -36,6 +45,12 @@ export async function startGeneration(
   }
   if (imageModelId) {
     payload.image_model_id = imageModelId;
+  }
+  if (documents) {
+    payload.documents = documents;
+  }
+  if (inputConfig) {
+    payload.input_config = inputConfig;
   }
   const { data } = await request.post<ApiResponse<GenerationTask>>("/generation/start", payload);
   if (data.code !== 0) {

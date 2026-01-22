@@ -325,28 +325,28 @@ def _build_character_sheet_prompt(subject: dict, blueprint: dict) -> str:
         style_prompt = f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
 
     lines = [
-        "Create a clean 3:4 portrait character turnaround sheet for a single character.",
+        "生成同一个角色的三视图角色设定图（turnaround / model sheet）。",
         "",
-        f"Character: {name}",
-        f"Description: {description}",
+        f"角色：{name}",
+        f"描述：{description}",
     ]
     if traits_text:
-        lines.append(f"Visual traits: {traits_text}")
+        lines.append(f"特征：{traits_text}")
     if style_prompt:
-        lines.append(f"Style: {style_prompt}")
+        lines.append(f"风格：{style_prompt}")
     lines.extend(
         [
             "",
-            "Composition:",
-            "- front view, side view, back view in one canvas",
-            "- front shows facial features and torso; side shows profile silhouette; back shows hair and back details",
-            "- evenly spaced, same scale, consistent proportions",
-            "- full-body views, centered",
-            "- neutral background, uniform lighting",
-            "",
-            "Constraints:",
-            "- no text, no captions, no logos, no watermark",
-            "- avoid extra limbs or distorted anatomy",
+            "要求：",
+            "- 画面必须同时包含【正面视图 / 侧面视图 / 背面视图】，三个视图横向并排展示",
+            "- 角色一致性要求：五官一致、发型一致、服装款式一致、颜色一致、身材比例一致",
+            "- 姿态：标准站立中立姿态（neutral pose），双脚自然站立，身体直立，无动作、无夸张姿势",
+            "- 视角：正交视图（orthographic view），不允许透视，不允许镜头角度变化，仅正面/侧面/背面三种视角",
+            "- 光照：均匀棚拍光照，无强阴影，无戏剧化光影",
+            "- 背景：纯白色或浅灰色背景，无场景、无道具、无装饰",
+            "- 绘制：高细节，线条清晰，轮廓明确，适合作为角色参考设定图使用",
+            "- 强约束：禁止改变服装，禁止改变颜色，禁止增加动作，禁止透视，禁止生成多个人物",
+            "- 禁止文字、水印、Logo、字幕",
         ]
     )
     return "\n".join([line for line in lines if line is not None]).strip()
@@ -942,6 +942,10 @@ async def regenerate_from_feedback(
     mode = mode.strip().lower() if isinstance(mode, str) else "general"
     if mode not in {"general", "pro"}:
         mode = "general"
+    input_config = metadata.get("input_config") if isinstance(metadata, dict) else {}
+    input_config = input_config if isinstance(input_config, dict) else {}
+    documents = metadata.get("input_documents") if isinstance(metadata, dict) else []
+    documents = documents if isinstance(documents, list) else []
     image_size = metadata.get("image_size") if isinstance(metadata.get("image_size"), str) else None
     image_size = image_size or settings.seedream_default_size or "960x1280"
     resolved_model_id = None
@@ -983,6 +987,8 @@ async def regenerate_from_feedback(
         summary, keywords = llm_service.generate_summary(
             str(source_prompt),
             mode,
+            documents=documents,
+            input_config=input_config,
             feedback=feedback,
             previous_summary=previous_summary,
         )
@@ -994,6 +1000,8 @@ async def regenerate_from_feedback(
             summary,
             str(source_prompt),
             mode,
+            documents=documents,
+            input_config=input_config,
             feedback=feedback,
             previous_art_style=previous_art_style if isinstance(previous_art_style, dict) else {},
         )
@@ -1010,6 +1018,8 @@ async def regenerate_from_feedback(
             art_style,
             str(source_prompt),
             mode,
+            documents=documents,
+            input_config=input_config,
             feedback=feedback,
             previous_subjects=previous_subjects if isinstance(previous_subjects, list) else [],
         )
@@ -1023,6 +1033,8 @@ async def regenerate_from_feedback(
             subjects,
             str(source_prompt),
             mode,
+            documents=documents,
+            input_config=input_config,
             feedback=feedback,
             previous_scenes=previous_scenes if isinstance(previous_scenes, list) else [],
         )
@@ -1037,6 +1049,8 @@ async def regenerate_from_feedback(
             scenes,
             str(source_prompt),
             mode,
+            documents=documents,
+            input_config=input_config,
             feedback=feedback,
             previous_storyboard=previous_storyboard if isinstance(previous_storyboard, list) else [],
         )
@@ -1141,7 +1155,10 @@ async def regenerate_from_feedback(
                     if blueprint.get("scenes")
                     else blueprint["summary"]["synopsis"],
                     "style": None,
-                    "aspect_ratio": "3:4",
+                    "aspect_ratio": (
+                        input_config.get("aspect_ratio") if isinstance(input_config, dict) else None
+                    )
+                    or "3:4",
                     "size": image_size,
                     "seed": None,
                 },
@@ -1155,6 +1172,8 @@ async def regenerate_from_feedback(
                 "user_feedback": feedback,
                 "generation_mode": mode,
                 "image_model_id": resolved_model_id,
+                "input_config": input_config,
+                "input_documents": documents,
             },
             "art_style": {
                 "style_name": blueprint.get("art_style", {}).get("style_name", ""),

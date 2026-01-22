@@ -41,23 +41,35 @@ provide('toasts', toastState);
 </script>
 
 <style>
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@400;500;700&display=swap");
 @import "./styles/utilities.css";
 @import "./styles/layout.css";
 
 :root {
-  --md-surface: #fffbfe;
-  --md-surface-container: #f3edf7;
-  --md-surface-container-low: #e7e0ec;
-  --md-on-surface: #1c1b1f;
-  --md-on-surface-variant: #49454f;
-  --md-primary: #6750a4;
-  --md-on-primary: #ffffff;
-  --md-secondary-container: #e8def8;
-  --md-on-secondary-container: #1d192b;
-  --md-tertiary: #7d5260;
-  --md-outline: #79747e;
-  --md-shadow: rgba(18, 18, 18, 0.12);
+  --md-surface: #0b0f16;
+  --md-surface-container: #111827;
+  --md-surface-container-low: #0f172a;
+  --md-surface-elevated: #151f33;
+  --md-surface-card: rgba(15, 23, 42, 0.86);
+  --md-on-surface: #e2e8f0;
+  --md-on-surface-variant: #94a3b8;
+  --md-primary: #4de7ff;
+  --md-on-primary: #041019;
+  --md-secondary-container: #12243a;
+  --md-on-secondary-container: #d7f7ff;
+  --md-tertiary: #00d4a1;
+  --md-outline: #334155;
+  --md-shadow: rgba(2, 6, 23, 0.45);
+  --md-stroke: rgba(148, 163, 184, 0.2);
+  --md-stroke-strong: rgba(77, 231, 255, 0.45);
+  --md-accent-rgb: 77, 231, 255;
+  --md-accent-2-rgb: 0, 212, 161;
+  --md-accent-glow: rgba(77, 231, 255, 0.22);
+  --md-accent-soft: rgba(77, 231, 255, 0.12);
+  --md-surface-glow: rgba(15, 23, 42, 0.75);
+  --md-card-shadow: 0 18px 38px rgba(2, 6, 23, 0.45);
+  --md-card-shadow-soft: 0 12px 26px rgba(2, 6, 23, 0.35);
+  --md-field-bg: rgba(10, 16, 28, 0.85);
   --layer-nav: 100;
   --layer-side: 90;
   --layer-popover: 200;
@@ -81,14 +93,42 @@ html {
 }
 
 body {
-  font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+  font-family: "Space Grotesk", "Manrope", "Noto Sans SC", sans-serif;
   line-height: 1.5;
   color: var(--md-on-surface);
-  background: var(--md-surface);
+  background: radial-gradient(circle at top, rgba(56, 189, 248, 0.08), transparent 45%),
+    radial-gradient(circle at 20% 20%, rgba(0, 212, 161, 0.08), transparent 42%),
+    radial-gradient(circle at 80% 0%, rgba(77, 231, 255, 0.12), transparent 38%),
+    var(--md-surface);
+  position: relative;
 }
 
 #app {
   min-height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 120px 120px;
+  opacity: 0.35;
+  z-index: 0;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 20% 10%, rgba(var(--md-accent-rgb), 0.12), transparent 45%),
+    radial-gradient(circle at 80% 90%, rgba(var(--md-accent-2-rgb), 0.1), transparent 40%);
+  z-index: 0;
 }
 
 /* Custom scrollbar */
@@ -98,17 +138,17 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(73, 69, 79, 0.08);
+  background: rgba(148, 163, 184, 0.08);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(73, 69, 79, 0.2);
+  background: rgba(77, 231, 255, 0.18);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(73, 69, 79, 0.3);
+  background: rgba(77, 231, 255, 0.3);
 }
 
 /* Link styles */
@@ -119,14 +159,33 @@ a {
 
 /* Focus visible */
 :focus-visible {
-  outline: 2px solid rgba(103, 80, 164, 0.5);
+  outline: 2px solid rgba(var(--md-accent-rgb), 0.7);
   outline-offset: 2px;
 }
 
 /* Selection */
 ::selection {
-  background: rgba(103, 80, 164, 0.2);
+  background: rgba(var(--md-accent-rgb), 0.25);
   color: var(--md-on-surface);
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: rgba(148, 163, 184, 0.7);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(var(--md-accent-rgb), 0.25);
+  border-color: rgba(var(--md-accent-rgb), 0.35);
 }
 
 /* Toast Notifications */
@@ -143,32 +202,32 @@ a {
   padding: 10px 16px;
   border-radius: 12px;
   font-size: 13px;
-  box-shadow: 0 12px 28px rgba(26, 18, 44, 0.18);
+  box-shadow: 0 16px 32px rgba(2, 6, 23, 0.45);
   margin-top: 8px;
 }
 
 .toast--info {
-  background: var(--md-surface-container);
+  background: rgba(15, 23, 42, 0.9);
   color: var(--md-on-surface);
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  border: 1px solid rgba(77, 231, 255, 0.18);
 }
 
 .toast--success {
-  background: rgba(232, 247, 242, 0.9);
-  color: #146c43;
-  border: 1px solid rgba(20, 108, 67, 0.25);
+  background: rgba(15, 118, 110, 0.22);
+  color: #a7f3d0;
+  border: 1px solid rgba(20, 184, 166, 0.35);
 }
 
 .toast--error {
-  background: rgba(255, 234, 236, 0.9);
-  color: #b42318;
-  border: 1px solid rgba(180, 35, 24, 0.25);
+  background: rgba(220, 38, 38, 0.2);
+  color: #fecaca;
+  border: 1px solid rgba(248, 113, 113, 0.35);
 }
 
 .toast--warning {
-  background: rgba(255, 244, 224, 0.92);
-  color: #b54708;
-  border: 1px solid rgba(181, 71, 8, 0.25);
+  background: rgba(245, 158, 11, 0.22);
+  color: #fde68a;
+  border: 1px solid rgba(251, 191, 36, 0.35);
 }
 
 @keyframes slideUp {

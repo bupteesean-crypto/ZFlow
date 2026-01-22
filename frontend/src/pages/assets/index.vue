@@ -256,8 +256,8 @@ const handleBatchArchive = () => {
 .asset-tab-btn {
   padding: 8px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container-low);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.75);
   color: var(--md-on-surface-variant);
   font-size: 13px;
   cursor: pointer;
@@ -265,13 +265,13 @@ const handleBatchArchive = () => {
 }
 
 .asset-tab-btn:hover {
-  border-color: rgba(121, 116, 126, 0.35);
-  background: rgba(103, 80, 164, 0.08);
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(var(--md-accent-rgb), 0.08);
 }
 
 .asset-tab-btn.active {
-  border-color: rgba(103, 80, 164, 0.5);
-  background: rgba(103, 80, 164, 0.12);
+  border-color: rgba(var(--md-accent-rgb), 0.6);
+  background: rgba(var(--md-accent-rgb), 0.18);
   color: var(--md-on-surface);
 }
 
@@ -285,8 +285,8 @@ const handleBatchArchive = () => {
 
 .toolbar-input,
 .toolbar-select {
-  background: var(--md-surface-container-low);
-  border: 1px solid rgba(121, 116, 126, 0.25);
+  background: var(--md-field-bg);
+  border: 1px solid var(--md-stroke);
   color: var(--md-on-surface);
   border-radius: 8px;
   padding: 8px;
@@ -304,16 +304,16 @@ const handleBatchArchive = () => {
 .toolbar-btn {
   padding: 8px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.85);
   color: var(--md-on-surface);
   cursor: pointer;
   font-size: 12px;
 }
 
 .toolbar-btn:hover {
-  border-color: rgba(103, 80, 164, 0.3);
-  background: rgba(103, 80, 164, 0.12);
+  border-color: rgba(var(--md-accent-rgb), 0.3);
+  background: rgba(var(--md-accent-rgb), 0.12);
 }
 
 .asset-actions {
@@ -328,23 +328,24 @@ const handleBatchArchive = () => {
 }
 
 .asset-card {
-  border: 1px solid rgba(121, 116, 126, 0.2);
-  border-radius: 12px;
-  background: var(--md-surface-container);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 14px;
+  background: var(--md-surface-card);
   padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   transition: all 0.2s ease;
+  box-shadow: var(--md-card-shadow-soft);
 }
 
 .asset-card:hover {
-  border-color: rgba(121, 116, 126, 0.35);
+  border-color: rgba(148, 163, 184, 0.35);
 }
 
 .asset-card.selected {
-  border-color: rgba(103, 80, 164, 0.45);
-  background: rgba(103, 80, 164, 0.12);
+  border-color: rgba(var(--md-accent-rgb), 0.5);
+  background: rgba(var(--md-accent-rgb), 0.18);
 }
 
 .asset-card header {
@@ -366,16 +367,16 @@ const handleBatchArchive = () => {
   padding: 4px 8px;
   border-radius: 8px;
   font-size: 11px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  color: var(--md-on-surface-variant);
-  background: var(--md-surface-container-low);
+  border: 1px solid rgba(var(--md-accent-rgb), 0.35);
+  color: #dff8ff;
+  background: rgba(var(--md-accent-rgb), 0.18);
 }
 
 .asset-preview {
   border-radius: 10px;
   overflow: hidden;
-  border: 1px solid rgba(121, 116, 126, 0.2);
-  background: var(--md-surface-container-low);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(10, 16, 28, 0.75);
   min-height: 80px;
   display: flex;
   align-items: center;
@@ -408,16 +409,16 @@ const handleBatchArchive = () => {
   flex: 1;
   padding: 6px 8px;
   border-radius: 8px;
-  border: 1px solid rgba(121, 116, 126, 0.2);
-  background: var(--md-surface-container-low);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.85);
   color: var(--md-on-surface);
   font-size: 11px;
   cursor: pointer;
 }
 
 .asset-card-actions button:hover {
-  border-color: rgba(103, 80, 164, 0.35);
-  background: rgba(103, 80, 164, 0.15);
+  border-color: rgba(var(--md-accent-rgb), 0.35);
+  background: rgba(var(--md-accent-rgb), 0.15);
 }
 
 .empty-state {

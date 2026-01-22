@@ -22,6 +22,15 @@ ART_STYLE_REWRITE_PATH = (
 STORYBOARD_REWRITE_PATH = (
     Path(__file__).resolve().parents[1] / "prompts" / "storyboard_rewrite_v1.md"
 )
+SUMMARY_REWRITE_PATH = (
+    Path(__file__).resolve().parents[1] / "prompts" / "summary_rewrite_v1.md"
+)
+SUBJECT_REWRITE_PATH = (
+    Path(__file__).resolve().parents[1] / "prompts" / "subject_rewrite_v1.md"
+)
+SCENE_REWRITE_PATH = (
+    Path(__file__).resolve().parents[1] / "prompts" / "scene_rewrite_v1.md"
+)
 BLUEPRINT_REWRITE_PATH = (
     Path(__file__).resolve().parents[1] / "prompts" / "blueprint_rewrite_v1.md"
 )
@@ -57,6 +66,27 @@ DEFAULT_STORYBOARD_REWRITE_PROMPT = (
     "You are a prompt rewrite assistant for storyboard description edits. "
     "Given the current storyboard description and user feedback, rewrite the FULL description. "
     "Output JSON only with keys: description (Chinese output required). "
+    "Apply feedback directly. Preserve details not requested to change. "
+    "No Markdown, no extra text."
+)
+DEFAULT_SUMMARY_REWRITE_PROMPT = (
+    "You are a prompt rewrite assistant for summary edits. "
+    "Given the current summary and user feedback, rewrite the FULL summary. "
+    "Output JSON only with key: summary (Chinese output required). "
+    "Apply feedback directly. Preserve details not requested to change. "
+    "No Markdown, no extra text."
+)
+DEFAULT_SUBJECT_REWRITE_PROMPT = (
+    "You are a prompt rewrite assistant for character edits. "
+    "Given the current subject and user feedback, rewrite the FULL subject. "
+    "Output JSON only with keys: name, role, description, visual_traits (Chinese output required). "
+    "Apply feedback directly. Preserve details not requested to change. "
+    "No Markdown, no extra text."
+)
+DEFAULT_SCENE_REWRITE_PROMPT = (
+    "You are a prompt rewrite assistant for scene edits. "
+    "Given the current scene and user feedback, rewrite the FULL scene. "
+    "Output JSON only with keys: name, description, mood, purpose (Chinese output required). "
     "Apply feedback directly. Preserve details not requested to change. "
     "No Markdown, no extra text."
 )
@@ -178,6 +208,17 @@ def _normalize_subjects(value: object, fallback_text: str) -> list[dict]:
     return subjects if subjects else _default_subjects(fallback_text)
 
 
+def _normalize_subject_value(value: object) -> dict:
+    if not isinstance(value, dict):
+        return {"name": "", "description": "", "role": "", "visual_traits": []}
+    name = _normalize_text(value.get("name"), "")
+    description = _normalize_text(value.get("description"), "")
+    role = _normalize_text(value.get("role"), "")
+    traits = value.get("visual_traits") if isinstance(value.get("visual_traits"), list) else []
+    traits = [str(trait).strip() for trait in traits if str(trait).strip()]
+    return {"name": name, "description": description, "role": role, "visual_traits": traits}
+
+
 def _default_scenes(fallback_text: str) -> list[dict]:
     description = fallback_text or "Main scene."
     return [{"name": "Main Scene", "description": description, "mood": "neutral"}]
@@ -203,6 +244,21 @@ def _normalize_scenes(value: object, fallback_text: str) -> list[dict]:
             }
         )
     return scenes if scenes else _default_scenes(fallback_text)
+
+
+def _normalize_scene_value(value: object) -> dict:
+    if not isinstance(value, dict):
+        return {"name": "", "description": "", "mood": "", "purpose": ""}
+    name = _normalize_text(value.get("name"), "")
+    description = _normalize_text(value.get("description"), "")
+    mood = _normalize_text(value.get("mood"), "")
+    purpose = _normalize_text(value.get("purpose"), "")
+    return {
+        "name": name,
+        "description": description,
+        "mood": mood,
+        "purpose": purpose,
+    }
 
 
 def _default_storyboard(fallback_text: str) -> list[dict]:
@@ -496,8 +552,53 @@ def _load_storyboard_prompt() -> str:
         return DEFAULT_STORYBOARD_REWRITE_PROMPT
 
 
+def _load_summary_rewrite_prompt() -> str:
+    try:
+        return (
+            SUMMARY_REWRITE_PATH.read_text(encoding="utf-8").strip()
+            or DEFAULT_SUMMARY_REWRITE_PROMPT
+        )
+    except OSError:
+        logger.warning(
+            "Failed to read summary prompt at %s; using default prompt",
+            SUMMARY_REWRITE_PATH,
+        )
+        return DEFAULT_SUMMARY_REWRITE_PROMPT
+
+
+def _load_subject_rewrite_prompt() -> str:
+    try:
+        return (
+            SUBJECT_REWRITE_PATH.read_text(encoding="utf-8").strip()
+            or DEFAULT_SUBJECT_REWRITE_PROMPT
+        )
+    except OSError:
+        logger.warning(
+            "Failed to read subject prompt at %s; using default prompt",
+            SUBJECT_REWRITE_PATH,
+        )
+        return DEFAULT_SUBJECT_REWRITE_PROMPT
+
+
+def _load_scene_rewrite_prompt() -> str:
+    try:
+        return (
+            SCENE_REWRITE_PATH.read_text(encoding="utf-8").strip()
+            or DEFAULT_SCENE_REWRITE_PROMPT
+        )
+    except OSError:
+        logger.warning(
+            "Failed to read scene prompt at %s; using default prompt",
+            SCENE_REWRITE_PATH,
+        )
+        return DEFAULT_SCENE_REWRITE_PROMPT
+
+
 ART_STYLE_REWRITE_PROMPT = _load_art_style_prompt()
 STORYBOARD_REWRITE_PROMPT = _load_storyboard_prompt()
+SUMMARY_REWRITE_PROMPT = _load_summary_rewrite_prompt()
+SUBJECT_REWRITE_PROMPT = _load_subject_rewrite_prompt()
+SCENE_REWRITE_PROMPT = _load_scene_rewrite_prompt()
 
 
 def _load_blueprint_prompt() -> str:
@@ -573,6 +674,7 @@ class LLMService:
         prompt: str,
         mode: str,
         documents: list | None = None,
+        input_config: dict | None = None,
         feedback: str | None = None,
         previous_summary: str | None = None,
     ) -> tuple[str, list[str]]:
@@ -587,6 +689,7 @@ class LLMService:
             "summary": (previous_summary or "").strip(),
             "feedback": (feedback or "").strip(),
             "documents": documents or [],
+            "input_config": input_config or {},
         }
         content = self._call_glm(system_prompt, payload_context, temperature=temperature)
         parsed = self._parse_json_dict(content)
@@ -602,6 +705,8 @@ class LLMService:
         summary: str,
         prompt: str,
         mode: str,
+        documents: list | None = None,
+        input_config: dict | None = None,
         feedback: str | None = None,
         previous_art_style: dict | None = None,
     ) -> dict:
@@ -616,6 +721,8 @@ class LLMService:
             "summary": (summary or "").strip(),
             "previous_art_style": _normalize_art_style(previous_art_style or {}),
             "feedback": (feedback or "").strip(),
+            "documents": documents or [],
+            "input_config": input_config or {},
         }
         content = self._call_glm(system_prompt, payload_context, temperature=temperature)
         parsed = self._parse_json_dict(content)
@@ -634,6 +741,8 @@ class LLMService:
         art_style: dict,
         prompt: str,
         mode: str,
+        documents: list | None = None,
+        input_config: dict | None = None,
         feedback: str | None = None,
         previous_subjects: list | None = None,
     ) -> list[dict]:
@@ -649,6 +758,8 @@ class LLMService:
             "art_style": _normalize_art_style(art_style or {}),
             "previous_subjects": previous_subjects or [],
             "feedback": (feedback or "").strip(),
+            "documents": documents or [],
+            "input_config": input_config or {},
         }
         content = self._call_glm(system_prompt, payload_context, temperature=temperature)
         parsed = self._parse_json_dict(content)
@@ -666,6 +777,8 @@ class LLMService:
         subjects: list[dict],
         prompt: str,
         mode: str,
+        documents: list | None = None,
+        input_config: dict | None = None,
         feedback: str | None = None,
         previous_scenes: list | None = None,
     ) -> list[dict]:
@@ -682,6 +795,8 @@ class LLMService:
             "subjects": subjects or [],
             "previous_scenes": previous_scenes or [],
             "feedback": (feedback or "").strip(),
+            "documents": documents or [],
+            "input_config": input_config or {},
         }
         content = self._call_glm(system_prompt, payload_context, temperature=temperature)
         parsed = self._parse_json_dict(content)
@@ -700,6 +815,8 @@ class LLMService:
         scenes: list[dict],
         prompt: str,
         mode: str,
+        documents: list | None = None,
+        input_config: dict | None = None,
         feedback: str | None = None,
         previous_storyboard: list | None = None,
     ) -> list[dict]:
@@ -717,6 +834,8 @@ class LLMService:
             "scenes": scenes or [],
             "previous_storyboard": previous_storyboard or [],
             "feedback": (feedback or "").strip(),
+            "documents": documents or [],
+            "input_config": input_config or {},
         }
         content = self._call_glm(system_prompt, payload_context, temperature=temperature)
         parsed = self._parse_json_dict(content)
@@ -734,6 +853,7 @@ class LLMService:
         previous_package: dict | None = None,
         feedback: str | None = None,
         documents: list | None = None,
+        input_config: dict | None = None,
     ) -> dict:
         provider = normalize_provider(self._provider)
         if provider != "glm":
@@ -751,6 +871,7 @@ class LLMService:
             prompt,
             mode,
             documents=documents,
+            input_config=input_config,
             feedback=feedback,
             previous_summary=previous_summary,
         )
@@ -758,6 +879,8 @@ class LLMService:
             summary,
             prompt,
             mode,
+            documents=documents,
+            input_config=input_config,
             feedback=feedback,
             previous_art_style=previous_art_style if isinstance(previous_art_style, dict) else {},
         )
@@ -766,6 +889,8 @@ class LLMService:
             art_style,
             prompt,
             mode,
+            documents=documents,
+            input_config=input_config,
             feedback=feedback,
             previous_subjects=previous_subjects if isinstance(previous_subjects, list) else [],
         )
@@ -775,6 +900,8 @@ class LLMService:
             subjects,
             prompt,
             mode,
+            documents=documents,
+            input_config=input_config,
             feedback=feedback,
             previous_scenes=previous_scenes if isinstance(previous_scenes, list) else [],
         )
@@ -785,6 +912,8 @@ class LLMService:
             scenes,
             prompt,
             mode,
+            documents=documents,
+            input_config=input_config,
             feedback=feedback,
             previous_storyboard=previous_storyboard if isinstance(previous_storyboard, list) else [],
         )
@@ -898,6 +1027,15 @@ class LLMService:
         logger.warning("LLM provider %s not implemented; using mock rewrite", provider)
         return self._mock_rewrite(original_prompt, feedback)
 
+    def rewrite_summary(self, current_summary: str, feedback: str) -> str:
+        provider = normalize_provider(self._provider)
+        if not provider or provider == "mock":
+            return self._mock_rewrite_summary(current_summary, feedback)
+        if provider == "glm":
+            return self._rewrite_summary_glm(current_summary, feedback)
+        logger.warning("LLM provider %s not implemented; using mock rewrite", provider)
+        return self._mock_rewrite_summary(current_summary, feedback)
+
     def _mock_rewrite(self, original_prompt: str, feedback: str) -> str:
         base = (original_prompt or "").strip()
         note = (feedback or "").strip()
@@ -973,6 +1111,15 @@ class LLMService:
         rewritten = (content or "").strip()
         return rewritten or self._mock_rewrite(original_prompt, feedback)
 
+    def _mock_rewrite_summary(self, current_summary: str, feedback: str) -> str:
+        base = (current_summary or "").strip()
+        note = (feedback or "").strip()
+        if not base:
+            return note
+        if not note:
+            return base
+        return f"{base}\n\nUser feedback: {note}"
+
     def rewrite_art_style(self, current_style: dict, feedback: str) -> dict:
         provider = normalize_provider(self._provider)
         if not provider or provider == "mock":
@@ -993,6 +1140,24 @@ class LLMService:
         logger.warning("LLM provider %s not implemented; using mock rewrite", provider)
         return self._mock_rewrite_storyboard(current_description, feedback)
 
+    def rewrite_subject(self, current_subject: dict, feedback: str) -> dict:
+        provider = normalize_provider(self._provider)
+        if not provider or provider == "mock":
+            return self._mock_rewrite_subject(current_subject, feedback)
+        if provider == "glm":
+            return self._rewrite_subject_glm(current_subject, feedback)
+        logger.warning("LLM provider %s not implemented; using mock rewrite", provider)
+        return self._mock_rewrite_subject(current_subject, feedback)
+
+    def rewrite_scene(self, current_scene: dict, feedback: str) -> dict:
+        provider = normalize_provider(self._provider)
+        if not provider or provider == "mock":
+            return self._mock_rewrite_scene(current_scene, feedback)
+        if provider == "glm":
+            return self._rewrite_scene_glm(current_scene, feedback)
+        logger.warning("LLM provider %s not implemented; using mock rewrite", provider)
+        return self._mock_rewrite_scene(current_scene, feedback)
+
     def _mock_rewrite_art_style(self, current_style: dict, feedback: str) -> dict:
         style = _normalize_art_style(current_style or {})
         note = (feedback or "").strip()
@@ -1000,6 +1165,22 @@ class LLMService:
             prompt = style.get("style_prompt") or ""
             style["style_prompt"] = f"{prompt}\n\nUser feedback: {note}".strip()
         return style
+
+    def _mock_rewrite_subject(self, current_subject: dict, feedback: str) -> dict:
+        subject = _normalize_subject_value(current_subject or {})
+        note = (feedback or "").strip()
+        if note:
+            description = subject.get("description") or ""
+            subject["description"] = f"{description}\n\nUser feedback: {note}".strip()
+        return subject
+
+    def _mock_rewrite_scene(self, current_scene: dict, feedback: str) -> dict:
+        scene = _normalize_scene_value(current_scene or {})
+        note = (feedback or "").strip()
+        if note:
+            description = scene.get("description") or ""
+            scene["description"] = f"{description}\n\nUser feedback: {note}".strip()
+        return scene
 
     def _mock_rewrite_storyboard(self, current_description: str, feedback: str) -> str:
         base = (current_description or "").strip()
@@ -1057,6 +1238,70 @@ class LLMService:
         return description or self._mock_rewrite_storyboard(
             current_description, feedback
         )
+
+    def _rewrite_summary_glm(self, current_summary: str, feedback: str) -> str:
+        api_key = settings.glm_api_key
+        model = settings.glm_model
+        if not api_key or not model:
+            logger.error(
+                "GLM provider selected but GLM_API_KEY or GLM_MODEL is missing"
+            )
+            return self._mock_rewrite_summary(current_summary, feedback)
+
+        payload_context = {
+            "current_summary": (current_summary or "").strip(),
+            "feedback": (feedback or "").strip(),
+        }
+        content = self._call_glm(
+            SUMMARY_REWRITE_PROMPT, payload_context, temperature=0.4
+        )
+        parsed = self._parse_json_dict(content)
+        summary = _normalize_text(parsed.get("summary"), "")
+        return summary or self._mock_rewrite_summary(current_summary, feedback)
+
+    def _rewrite_subject_glm(self, current_subject: dict, feedback: str) -> dict:
+        api_key = settings.glm_api_key
+        model = settings.glm_model
+        if not api_key or not model:
+            logger.error(
+                "GLM provider selected but GLM_API_KEY or GLM_MODEL is missing"
+            )
+            return self._mock_rewrite_subject(current_subject, feedback)
+
+        payload_context = {
+            "current_subject": _normalize_subject_value(current_subject or {}),
+            "feedback": (feedback or "").strip(),
+        }
+        content = self._call_glm(
+            SUBJECT_REWRITE_PROMPT, payload_context, temperature=0.4
+        )
+        parsed = self._parse_json_dict(content)
+        rewritten = _normalize_subject_value(parsed)
+        if not rewritten.get("name") and not rewritten.get("description"):
+            return _normalize_subject_value(current_subject or {})
+        return rewritten
+
+    def _rewrite_scene_glm(self, current_scene: dict, feedback: str) -> dict:
+        api_key = settings.glm_api_key
+        model = settings.glm_model
+        if not api_key or not model:
+            logger.error(
+                "GLM provider selected but GLM_API_KEY or GLM_MODEL is missing"
+            )
+            return self._mock_rewrite_scene(current_scene, feedback)
+
+        payload_context = {
+            "current_scene": _normalize_scene_value(current_scene or {}),
+            "feedback": (feedback or "").strip(),
+        }
+        content = self._call_glm(
+            SCENE_REWRITE_PROMPT, payload_context, temperature=0.4
+        )
+        parsed = self._parse_json_dict(content)
+        rewritten = _normalize_scene_value(parsed)
+        if not rewritten.get("name") and not rewritten.get("description"):
+            return _normalize_scene_value(current_scene or {})
+        return rewritten
 
     def _call_glm(
         self, system_prompt: str, payload_context: dict, temperature: float = 0.4

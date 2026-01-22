@@ -14,6 +14,7 @@
 - summary: 可选，上一版故事梗概
 - feedback: 可选，用户修改意见
 - documents: 可选，用户提供的约束
+- input_config: 可选，输入阶段的配置（风格/画幅/时长/主体）
 
 如果有 feedback，把它当作改进指令，基于上一版优化。
 只返回 JSON，不要 Markdown，不要额外说明。

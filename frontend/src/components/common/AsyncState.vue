@@ -52,8 +52,8 @@ defineEmits<{
 .state-card {
   min-height: 140px;
   border-radius: 14px;
-  border: 1px solid rgba(121, 116, 126, 0.18);
-  background: var(--md-surface-container);
+  border: 1px solid var(--md-stroke);
+  background: var(--md-surface-card);
   color: var(--md-on-surface);
   display: flex;
   flex-direction: column;
@@ -62,17 +62,18 @@ defineEmits<{
   gap: 12px;
   text-align: center;
   padding: 24px;
+  box-shadow: var(--md-card-shadow-soft);
 }
 
 .state-card--error {
-  border-color: rgba(180, 35, 24, 0.35);
-  background: rgba(255, 234, 236, 0.6);
-  color: #7a1b12;
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(248, 113, 113, 0.08);
+  color: #fecaca;
 }
 
 .state-card--empty {
   color: var(--md-on-surface-variant);
-  background: var(--md-surface-container-low);
+  background: rgba(148, 163, 184, 0.08);
 }
 
 .state-title {
@@ -90,8 +91,9 @@ defineEmits<{
   border-radius: 10px;
   padding: 8px 14px;
   font-size: 13px;
-  background: var(--md-primary);
-  color: var(--md-on-primary);
+  background: rgba(var(--md-accent-rgb), 0.25);
+  color: var(--md-primary);
+  border: 1px solid rgba(var(--md-accent-rgb), 0.4);
   cursor: pointer;
 }
 
@@ -99,7 +101,7 @@ defineEmits<{
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  border: 3px solid rgba(103, 80, 164, 0.2);
+  border: 3px solid rgba(var(--md-accent-rgb), 0.2);
   border-top-color: var(--md-primary);
   animation: spin 0.8s linear infinite;
 }

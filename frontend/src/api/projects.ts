@@ -14,6 +14,8 @@ export type Project = {
   stage?: string;
   progress?: number;
   tags?: string[];
+  input_config?: Record<string, any>;
+  metadata?: Record<string, any>;
   updated_at?: string;
   created_at?: string;
   last_material_package_id?: string | null;
@@ -52,6 +54,17 @@ export async function createProject(payload: {
   const { data } = await request.post<ApiResponse<Project>>("/projects", payload);
   if (data.code !== 0) {
     throw new Error(data.message || "Failed to create project");
+  }
+  return data.data;
+}
+
+export async function updateProject(
+  projectId: string,
+  payload: Partial<Project> & { input_config?: Record<string, any>; metadata?: Record<string, any> }
+): Promise<Project> {
+  const { data } = await request.put<ApiResponse<Project>>(`/projects/${projectId}`, payload);
+  if (data.code !== 0) {
+    throw new Error(data.message || "Failed to update project");
   }
   return data.data;
 }

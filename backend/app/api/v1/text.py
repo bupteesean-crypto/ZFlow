@@ -31,8 +31,20 @@ def _ensure_text_candidates(metadata: dict) -> dict:
     if isinstance(container, dict):
         if container.get("version") != "v1":
             container["version"] = "v1"
+        container.setdefault("summary", {"active_id": None, "candidates": []})
+        container.setdefault("art_style", {"active_id": None, "candidates": []})
+        container.setdefault("subjects", {})
+        container.setdefault("scenes", {})
+        container.setdefault("storyboard", {})
         return container
-    container = {"version": "v1", "art_style": {"active_id": None, "candidates": []}, "storyboard": {}}
+    container = {
+        "version": "v1",
+        "summary": {"active_id": None, "candidates": []},
+        "art_style": {"active_id": None, "candidates": []},
+        "subjects": {},
+        "scenes": {},
+        "storyboard": {},
+    }
     metadata["text_candidates_v1"] = container
     return container
 
@@ -41,6 +53,20 @@ def _get_blueprint(materials: dict) -> dict:
     metadata = materials.get("metadata") if isinstance(materials, dict) else {}
     blueprint = metadata.get("blueprint_v1") if isinstance(metadata, dict) else {}
     return blueprint if isinstance(blueprint, dict) else {}
+
+
+def _resolve_summary(text_candidates: dict, blueprint: dict) -> str:
+    summary = blueprint.get("summary") if isinstance(blueprint.get("summary"), dict) else {}
+    current = summary.get("logline") or summary.get("synopsis") or ""
+    group = text_candidates.get("summary") if isinstance(text_candidates.get("summary"), dict) else {}
+    active_id = group.get("active_id")
+    candidates = group.get("candidates") if isinstance(group.get("candidates"), list) else []
+    if active_id:
+        for cand in candidates:
+            if isinstance(cand, dict) and cand.get("id") == active_id:
+                value = cand.get("value") if isinstance(cand.get("value"), dict) else {}
+                return value.get("summary") or current
+    return current
 
 
 def _resolve_art_style(text_candidates: dict, blueprint: dict) -> dict:
@@ -54,6 +80,44 @@ def _resolve_art_style(text_candidates: dict, blueprint: dict) -> dict:
                 value = cand.get("value")
                 return value if isinstance(value, dict) else art_style
     return art_style
+
+
+def _resolve_subject(text_candidates: dict, blueprint: dict, subject_id: str) -> dict:
+    subjects = blueprint.get("subjects") if isinstance(blueprint.get("subjects"), list) else []
+    current: dict[str, Any] = {}
+    for subject in subjects:
+        if isinstance(subject, dict) and subject.get("id") == subject_id:
+            current = subject
+            break
+    group = text_candidates.get("subjects") if isinstance(text_candidates.get("subjects"), dict) else {}
+    subject_group = group.get(subject_id) if isinstance(group.get(subject_id), dict) else {}
+    active_id = subject_group.get("active_id")
+    candidates = subject_group.get("candidates") if isinstance(subject_group.get("candidates"), list) else []
+    if active_id:
+        for cand in candidates:
+            if isinstance(cand, dict) and cand.get("id") == active_id:
+                value = cand.get("value") if isinstance(cand.get("value"), dict) else {}
+                return value or current
+    return current
+
+
+def _resolve_scene(text_candidates: dict, blueprint: dict, scene_id: str) -> dict:
+    scenes = blueprint.get("scenes") if isinstance(blueprint.get("scenes"), list) else []
+    current: dict[str, Any] = {}
+    for scene in scenes:
+        if isinstance(scene, dict) and scene.get("id") == scene_id:
+            current = scene
+            break
+    group = text_candidates.get("scenes") if isinstance(text_candidates.get("scenes"), dict) else {}
+    scene_group = group.get(scene_id) if isinstance(group.get(scene_id), dict) else {}
+    active_id = scene_group.get("active_id")
+    candidates = scene_group.get("candidates") if isinstance(scene_group.get("candidates"), list) else []
+    if active_id:
+        for cand in candidates:
+            if isinstance(cand, dict) and cand.get("id") == active_id:
+                value = cand.get("value") if isinstance(cand.get("value"), dict) else {}
+                return value or current
+    return current
 
 
 def _resolve_storyboard_description(text_candidates: dict, blueprint: dict, shot_id: str) -> str:
@@ -120,6 +184,190 @@ async def art_style_feedback(
         group["candidates"] = group_candidates
     group_candidates.append(candidate)
     # NOTE: blueprint_v1 is immutable; store edits in text_candidates_v1 only.
+    metadata["text_candidates_v1"] = text_candidates
+    materials["metadata"] = metadata
+
+    try:
+        package_repo.update_package(db, package.id, {"materials": materials})
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+
+    return ok({"candidate": candidate, "material_package_id": package.id})
+
+
+@router.post("/summary/feedback")
+async def summary_feedback(
+    payload: Dict[str, Any] = Body(default_factory=dict),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    package_id = payload.get("material_package_id")
+    if not isinstance(package_id, str) or not package_id.strip():
+        raise HTTPException(status_code=400, detail="material_package_id required")
+    feedback = payload.get("feedback")
+    if not isinstance(feedback, str) or not feedback.strip():
+        raise HTTPException(status_code=400, detail="feedback required")
+    feedback = feedback.strip()
+
+    try:
+        package = _get_package(db, package_id)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+    if not package:
+        raise HTTPException(status_code=404, detail="Material package not found")
+
+    materials = dict(package.materials or {})
+    metadata = dict(materials.get("metadata") or {})
+    text_candidates = _ensure_text_candidates(metadata)
+    blueprint = _get_blueprint(materials)
+    current_summary = _resolve_summary(text_candidates, blueprint)
+    rewritten = feedback_service.rewrite_prompt("summary", current_summary, feedback)
+    if not isinstance(rewritten, str):
+        logger.warning("Summary rewrite returned invalid payload; falling back to current summary.")
+        rewritten = current_summary
+
+    candidate = {
+        "id": new_id(),
+        "source": "user_feedback",
+        "feedback": feedback,
+        "value": {"summary": rewritten},
+        "created_at": _utc_now(),
+    }
+    group = text_candidates.setdefault("summary", {"active_id": None, "candidates": []})
+    group_candidates = group.get("candidates")
+    if not isinstance(group_candidates, list):
+        group_candidates = []
+        group["candidates"] = group_candidates
+    group_candidates.append(candidate)
+    metadata["text_candidates_v1"] = text_candidates
+    materials["metadata"] = metadata
+
+    try:
+        package_repo.update_package(db, package.id, {"materials": materials})
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+
+    return ok({"candidate": candidate, "material_package_id": package.id})
+
+
+@router.post("/subjects/{subject_id}/feedback")
+async def subject_feedback(
+    subject_id: str,
+    payload: Dict[str, Any] = Body(default_factory=dict),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    if not subject_id.strip():
+        raise HTTPException(status_code=400, detail="subject_id required")
+    package_id = payload.get("material_package_id")
+    if not isinstance(package_id, str) or not package_id.strip():
+        raise HTTPException(status_code=400, detail="material_package_id required")
+    feedback = payload.get("feedback")
+    if not isinstance(feedback, str) or not feedback.strip():
+        raise HTTPException(status_code=400, detail="feedback required")
+    feedback = feedback.strip()
+
+    try:
+        package = _get_package(db, package_id)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+    if not package:
+        raise HTTPException(status_code=404, detail="Material package not found")
+
+    materials = dict(package.materials or {})
+    metadata = dict(materials.get("metadata") or {})
+    text_candidates = _ensure_text_candidates(metadata)
+    blueprint = _get_blueprint(materials)
+    subjects = blueprint.get("subjects") if isinstance(blueprint.get("subjects"), list) else []
+    if not any(isinstance(subject, dict) and subject.get("id") == subject_id for subject in subjects):
+        raise HTTPException(status_code=404, detail="Subject not found")
+
+    current_subject = _resolve_subject(text_candidates, blueprint, subject_id)
+    rewritten = feedback_service.rewrite_prompt("subject", current_subject, feedback)
+    if not isinstance(rewritten, dict):
+        logger.warning("Subject rewrite returned invalid payload; falling back to current subject.")
+        rewritten = current_subject
+
+    candidate = {
+        "id": new_id(),
+        "source": "user_feedback",
+        "feedback": feedback,
+        "value": rewritten,
+        "created_at": _utc_now(),
+    }
+    group = text_candidates.setdefault("subjects", {})
+    subject_group = group.setdefault(subject_id, {"active_id": None, "candidates": []})
+    group_candidates = subject_group.get("candidates")
+    if not isinstance(group_candidates, list):
+        group_candidates = []
+        subject_group["candidates"] = group_candidates
+    group_candidates.append(candidate)
+    metadata["text_candidates_v1"] = text_candidates
+    materials["metadata"] = metadata
+
+    try:
+        package_repo.update_package(db, package.id, {"materials": materials})
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+
+    return ok({"candidate": candidate, "material_package_id": package.id})
+
+
+@router.post("/scenes/{scene_id}/feedback")
+async def scene_feedback(
+    scene_id: str,
+    payload: Dict[str, Any] = Body(default_factory=dict),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    if not scene_id.strip():
+        raise HTTPException(status_code=400, detail="scene_id required")
+    package_id = payload.get("material_package_id")
+    if not isinstance(package_id, str) or not package_id.strip():
+        raise HTTPException(status_code=400, detail="material_package_id required")
+    feedback = payload.get("feedback")
+    if not isinstance(feedback, str) or not feedback.strip():
+        raise HTTPException(status_code=400, detail="feedback required")
+    feedback = feedback.strip()
+
+    try:
+        package = _get_package(db, package_id)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+    if not package:
+        raise HTTPException(status_code=404, detail="Material package not found")
+
+    materials = dict(package.materials or {})
+    metadata = dict(materials.get("metadata") or {})
+    text_candidates = _ensure_text_candidates(metadata)
+    blueprint = _get_blueprint(materials)
+    scenes = blueprint.get("scenes") if isinstance(blueprint.get("scenes"), list) else []
+    if not any(isinstance(scene, dict) and scene.get("id") == scene_id for scene in scenes):
+        raise HTTPException(status_code=404, detail="Scene not found")
+
+    current_scene = _resolve_scene(text_candidates, blueprint, scene_id)
+    rewritten = feedback_service.rewrite_prompt("scene", current_scene, feedback)
+    if not isinstance(rewritten, dict):
+        logger.warning("Scene rewrite returned invalid payload; falling back to current scene.")
+        rewritten = current_scene
+
+    candidate = {
+        "id": new_id(),
+        "source": "user_feedback",
+        "feedback": feedback,
+        "value": rewritten,
+        "created_at": _utc_now(),
+    }
+    group = text_candidates.setdefault("scenes", {})
+    scene_group = group.setdefault(scene_id, {"active_id": None, "candidates": []})
+    group_candidates = scene_group.get("candidates")
+    if not isinstance(group_candidates, list):
+        group_candidates = []
+        scene_group["candidates"] = group_candidates
+    group_candidates.append(candidate)
     metadata["text_candidates_v1"] = text_candidates
     materials["metadata"] = metadata
 
@@ -213,6 +461,8 @@ async def adopt_text_candidate(
     if not isinstance(candidate_id, str) or not candidate_id.strip():
         raise HTTPException(status_code=400, detail="candidate_id required")
     shot_id = payload.get("shot_id")
+    subject_id = payload.get("subject_id")
+    scene_id = payload.get("scene_id")
 
     try:
         package = _get_package(db, package_id)
@@ -233,6 +483,34 @@ async def adopt_text_candidate(
         if not any(isinstance(cand, dict) and cand.get("id") == candidate_id for cand in candidates):
             raise HTTPException(status_code=404, detail="Candidate not found")
         group["active_id"] = candidate_id
+    elif target == "summary":
+        group = text_candidates.setdefault("summary", {"active_id": None, "candidates": []})
+        candidates = group.get("candidates") if isinstance(group.get("candidates"), list) else []
+        if not any(isinstance(cand, dict) and cand.get("id") == candidate_id for cand in candidates):
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        group["active_id"] = candidate_id
+    elif target == "subject":
+        if not isinstance(subject_id, str) or not subject_id.strip():
+            raise HTTPException(status_code=400, detail="subject_id required")
+        group = text_candidates.setdefault("subjects", {})
+        subject_group = group.get(subject_id)
+        if not isinstance(subject_group, dict):
+            raise HTTPException(status_code=404, detail="Subject candidate group not found")
+        candidates = subject_group.get("candidates") if isinstance(subject_group.get("candidates"), list) else []
+        if not any(isinstance(cand, dict) and cand.get("id") == candidate_id for cand in candidates):
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        subject_group["active_id"] = candidate_id
+    elif target == "scene":
+        if not isinstance(scene_id, str) or not scene_id.strip():
+            raise HTTPException(status_code=400, detail="scene_id required")
+        group = text_candidates.setdefault("scenes", {})
+        scene_group = group.get(scene_id)
+        if not isinstance(scene_group, dict):
+            raise HTTPException(status_code=404, detail="Scene candidate group not found")
+        candidates = scene_group.get("candidates") if isinstance(scene_group.get("candidates"), list) else []
+        if not any(isinstance(cand, dict) and cand.get("id") == candidate_id for cand in candidates):
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        scene_group["active_id"] = candidate_id
     elif target == "storyboard_description":
         if not isinstance(shot_id, str) or not shot_id.strip():
             raise HTTPException(status_code=400, detail="shot_id required")

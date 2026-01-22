@@ -224,7 +224,7 @@ const goBack = () => {
   height: 36px;
   width: 36px;
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(103, 80, 164, 0.85), rgba(125, 82, 96, 0.75));
+  background: linear-gradient(135deg, rgba(var(--md-accent-rgb), 0.95), rgba(var(--md-accent-2-rgb), 0.85));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -235,15 +235,15 @@ const goBack = () => {
 .nav-link {
   padding: 8px 16px;
   border-radius: 8px;
-  background: var(--md-surface-container-low);
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: rgba(10, 16, 28, 0.8);
+  border: 1px solid var(--md-stroke);
   color: var(--md-on-surface-variant);
   text-decoration: none;
   transition: all 0.2s ease;
 }
 
 .nav-link:hover {
-  border-color: rgba(103, 80, 164, 0.35);
+  border-color: rgba(var(--md-accent-rgb), 0.35);
 }
 
 .login-main {
@@ -258,17 +258,18 @@ const goBack = () => {
   display: grid;
   grid-template-columns: 3fr 2fr;
   min-height: calc(100vh - 144px);
-  border: 1px solid rgba(121, 116, 126, 0.2);
-  border-radius: 18px;
+  border: 1px solid var(--md-stroke);
+  border-radius: 20px;
   overflow: hidden;
   max-width: 1000px;
   width: 100%;
+  box-shadow: var(--md-card-shadow);
 }
 
 .visual {
   position: relative;
   overflow: hidden;
-  background: var(--md-secondary-container);
+  background: linear-gradient(135deg, rgba(18, 36, 58, 0.9), rgba(9, 16, 28, 0.9));
   color: var(--md-on-secondary-container);
   display: flex;
   align-items: center;
@@ -289,16 +290,16 @@ const goBack = () => {
   width: 36px;
   height: 36px;
   border-radius: 12px;
-  border: 1px solid rgba(121, 116, 126, 0.2);
-  background: var(--md-surface-container-low);
+  border: 1px solid var(--md-stroke);
+  background: rgba(10, 16, 28, 0.75);
   color: var(--md-on-surface-variant);
   cursor: pointer;
   font-size: 20px;
 }
 
 .panel {
-  background: var(--md-surface-container);
-  border-left: 1px solid rgba(121, 116, 126, 0.2);
+  background: var(--md-surface-card);
+  border-left: 1px solid var(--md-stroke);
   padding: 48px 42px;
   display: flex;
   flex-direction: column;
@@ -316,7 +317,7 @@ const goBack = () => {
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(103, 80, 164, 0.9), rgba(125, 82, 96, 0.8));
+  background: linear-gradient(135deg, rgba(var(--md-accent-rgb), 0.9), rgba(var(--md-accent-2-rgb), 0.8));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -345,8 +346,8 @@ const goBack = () => {
 .tab {
   padding: 8px 12px;
   border-radius: 10px;
-  border: 1px solid rgba(121, 116, 126, 0.2);
-  background: var(--md-surface-container-low);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.75);
   color: var(--md-on-surface-variant);
   font-size: 13px;
   cursor: pointer;
@@ -354,8 +355,8 @@ const goBack = () => {
 }
 
 .tab.active {
-  border-color: rgba(103, 80, 164, 0.45);
-  background: rgba(103, 80, 164, 0.12);
+  border-color: rgba(var(--md-accent-rgb), 0.55);
+  background: rgba(var(--md-accent-rgb), 0.18);
   color: var(--md-on-surface);
 }
 
@@ -385,8 +386,8 @@ const goBack = () => {
 .country-code {
   padding: 12px 10px;
   border-radius: 10px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container-low);
+  border: 1px solid var(--md-stroke);
+  background: rgba(10, 16, 28, 0.75);
   color: var(--md-on-surface-variant);
 }
 
@@ -399,8 +400,8 @@ input {
   width: 100%;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container-low);
+  border: 1px solid var(--md-stroke);
+  background: var(--md-field-bg);
   color: var(--md-on-surface);
   font-size: 14px;
 }
@@ -411,15 +412,15 @@ input::placeholder {
 
 input:focus {
   outline: none;
-  border-color: rgba(103, 80, 164, 0.45);
+  border-color: rgba(var(--md-accent-rgb), 0.45);
 }
 
 .btn-code {
   min-width: 110px;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid rgba(121, 116, 126, 0.25);
-  background: var(--md-surface-container);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.8);
   color: var(--md-on-surface-variant);
   cursor: pointer;
   font-size: 13px;
@@ -427,7 +428,7 @@ input:focus {
 }
 
 .btn-code:hover:not(:disabled) {
-  background: rgba(103, 80, 164, 0.1);
+  background: rgba(var(--md-accent-rgb), 0.1);
 }
 
 .btn-code:disabled {
@@ -440,11 +441,11 @@ input:focus {
   padding: 14px;
   border: none;
   border-radius: 12px;
-  background: var(--md-primary);
-  color: var(--md-on-primary);
+  background: linear-gradient(135deg, rgba(var(--md-accent-rgb), 0.9), rgba(var(--md-accent-2-rgb), 0.85));
+  color: #031019;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 12px 28px rgba(103, 80, 164, 0.18);
+  box-shadow: 0 12px 28px rgba(var(--md-accent-rgb), 0.18);
   transition: all 0.2s ease;
 }
 
@@ -486,8 +487,8 @@ input:focus {
 .modal-content {
   width: min(600px, 90vw);
   max-height: 80vh;
-  background: var(--md-surface);
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: var(--md-surface-card);
+  border: 1px solid var(--md-stroke);
   border-radius: 16px;
   padding: 24px;
   overflow-y: auto;

@@ -50,8 +50,8 @@ const isActive = (path: string): boolean => {
 }
 
 .glass-side {
-  background: rgba(243, 237, 247, 0.9);
-  border-right: 1px solid rgba(121, 116, 126, 0.2);
+  background: linear-gradient(180deg, rgba(11, 15, 22, 0.92), rgba(11, 15, 22, 0.65));
+  border-right: 1px solid rgba(77, 231, 255, 0.22);
   border-radius: 16px;
   padding: 16px 0;
   margin: 0 8px;
@@ -59,7 +59,7 @@ const isActive = (path: string): boolean => {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 16px 28px rgba(2, 6, 23, 0.45);
 }
 
 .nav-link {
@@ -76,20 +76,21 @@ const isActive = (path: string): boolean => {
   width: 48px;
   height: 48px;
   position: relative;
-  box-shadow: 0 8px 16px rgba(26, 18, 44, 0.1);
+  box-shadow: 0 10px 18px rgba(2, 6, 23, 0.45);
 }
 
 .nav-link:hover {
-  border-color: rgba(103, 80, 164, 0.2);
-  background: rgba(103, 80, 164, 0.1);
+  border-color: rgba(var(--md-accent-rgb), 0.2);
+  background: rgba(var(--md-accent-rgb), 0.1);
   color: var(--md-on-surface);
   transform: translateY(-2px);
 }
 
 .nav-link.active {
-  border-color: rgba(103, 80, 164, 0.4);
-  background: rgba(103, 80, 164, 0.18);
+  border-color: rgba(var(--md-accent-rgb), 0.4);
+  background: rgba(var(--md-accent-rgb), 0.2);
   color: var(--md-on-surface);
+  box-shadow: 0 12px 22px rgba(var(--md-accent-rgb), 0.15);
 }
 
 .nav-link.icon-only::after {
@@ -99,8 +100,8 @@ const isActive = (path: string): boolean => {
   white-space: nowrap;
   padding: 6px 10px;
   border-radius: 10px;
-  background: var(--md-surface-container);
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  background: var(--md-surface-card);
+  border: 1px solid var(--md-stroke);
   color: var(--md-on-surface);
   font-size: 12px;
   opacity: 0;

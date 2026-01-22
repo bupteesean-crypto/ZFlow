@@ -105,10 +105,11 @@ const isLoading = (item: ImageItem) => {
 
 <style scoped>
 .section {
-  background: var(--md-surface-container);
-  border: 1px solid rgba(121, 116, 126, 0.2);
-  border-radius: 12px;
+  background: var(--md-surface-card);
+  border: 1px solid var(--md-stroke);
+  border-radius: 14px;
   padding: 14px;
+  box-shadow: var(--md-card-shadow-soft);
 }
 
 .section h3 {
@@ -129,16 +130,17 @@ const isLoading = (item: ImageItem) => {
 }
 
 .image-card {
-  border: 1px solid rgba(121, 116, 126, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 10px;
   overflow: hidden;
-  background: var(--md-surface);
+  background: rgba(10, 16, 28, 0.85);
   position: relative;
+  box-shadow: 0 10px 22px rgba(2, 6, 23, 0.35);
 }
 
 .image-card.selected {
-  border-color: rgba(103, 80, 164, 0.8);
-  box-shadow: 0 0 0 2px rgba(103, 80, 164, 0.25);
+  border-color: rgba(var(--md-accent-rgb), 0.8);
+  box-shadow: 0 0 0 2px rgba(var(--md-accent-rgb), 0.25);
 }
 
 .image-card.loading {
@@ -150,7 +152,7 @@ const isLoading = (item: ImageItem) => {
   width: 100%;
   height: 120px;
   object-fit: cover;
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(2, 6, 23, 0.5);
 }
 
 .preview-btn {
@@ -160,8 +162,8 @@ const isLoading = (item: ImageItem) => {
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(77, 231, 255, 0.45);
+  background: rgba(2, 6, 23, 0.7);
   color: #fff;
   cursor: pointer;
 }
@@ -171,7 +173,7 @@ const isLoading = (item: ImageItem) => {
   top: 6px;
   left: 6px;
   font-size: 12px;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(2, 6, 23, 0.7);
   color: #fff;
   padding: 2px 6px;
   border-radius: 999px;
