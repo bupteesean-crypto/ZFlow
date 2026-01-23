@@ -132,7 +132,7 @@
                 特征：{{ subject.visualTraits.join(' / ') }}
               </div>
               <div class="detail-row">视角：{{ subject.viewLabel }}</div>
-              <div v-if="subject.images.length" class="thumb-grid">
+              <div v-if="subject.images.length || showSubjectImagePlaceholder(subject)" class="thumb-grid">
                 <div
                   v-for="(img, idx) in subject.images"
                   :key="`${img.url}-${idx}`"
@@ -145,7 +145,7 @@
                   <button class="thumb-preview-btn" @click.stop="openImagePreview(img)">查看大图</button>
                   <div class="thumb-meta">{{ formatImageLabel(img) }}</div>
                 </div>
-                <div v-if="isLoadingSubject(subject)" class="thumb-card loading-card">
+                <div v-if="showSubjectImagePlaceholder(subject) || isLoadingSubject(subject)" class="thumb-card loading-card">
                   <div class="loading-text">生成中...</div>
                 </div>
               </div>
@@ -169,7 +169,7 @@
               <div class="detail-row">情绪：{{ scene.mood || '未指定' }}</div>
               <div class="detail-row">描述：{{ scene.description || '暂无描述' }}</div>
               <div class="detail-row" v-if="scene.purpose">目的：{{ scene.purpose }}</div>
-              <div v-if="scene.images.length" class="thumb-grid">
+              <div v-if="scene.images.length || showSceneImagePlaceholder(scene)" class="thumb-grid">
                 <div
                   v-for="(img, idx) in scene.images"
                   :key="`${img.url}-${idx}`"
@@ -182,7 +182,7 @@
                   <button class="thumb-preview-btn" @click.stop="openImagePreview(img)">查看大图</button>
                   <div class="thumb-meta">{{ formatImageLabel(img) }}</div>
                 </div>
-                <div v-if="isLoadingScene(scene)" class="thumb-card loading-card">
+                <div v-if="showSceneImagePlaceholder(scene) || isLoadingScene(scene)" class="thumb-card loading-card">
                   <div class="loading-text">生成中...</div>
                 </div>
               </div>
@@ -600,9 +600,11 @@ const streamSource = ref<EventSource | null>(null);
 const streamDone = ref(false);
 const streamWarningShown = ref(false);
 const isStreaming = ref(false);
+const isStreamingImages = ref(false);
 const streamContent = ref<StreamContent>({});
 const fallbackPollingId = ref<number | null>(null);
 const streamWatchdogId = ref<number | null>(null);
+const imageRefreshTimer = ref<number | null>(null);
 const lastStreamEventAt = ref(0);
 const generationSnapshotIds = ref<Set<string>>(new Set());
 const lastGenerationContext = ref<{
@@ -777,6 +779,16 @@ const isLoadingScene = (scene: SceneDisplay) => {
   }
   const sceneName = selectedImage.value.sceneName;
   return Boolean(sceneName && sceneName === scene.name);
+};
+
+const showSubjectImagePlaceholder = (subject: SubjectDisplay) => {
+  if (!isStreamingImages.value) return false;
+  return !subject.images || subject.images.length === 0;
+};
+
+const showSceneImagePlaceholder = (scene: SceneDisplay) => {
+  if (!isStreamingImages.value) return false;
+  return !scene.images || scene.images.length === 0;
 };
 
 const showUnassignedPlaceholder = computed(() => {
@@ -1381,6 +1393,8 @@ const resetStreamMessages = () => {
   streamTodoItems.value = [];
   streamContent.value = {};
   isStreaming.value = false;
+  isStreamingImages.value = false;
+  stopImageRefreshTimer();
 };
 
 const applyContentUpdate = (section: string, data: any) => {
@@ -1548,6 +1562,23 @@ const stopFallbackPolling = () => {
   }
 };
 
+const stopImageRefreshTimer = () => {
+  if (imageRefreshTimer.value) {
+    window.clearTimeout(imageRefreshTimer.value);
+    imageRefreshTimer.value = null;
+  }
+};
+
+const scheduleImageRefresh = () => {
+  if (imageRefreshTimer.value) {
+    return;
+  }
+  imageRefreshTimer.value = window.setTimeout(async () => {
+    imageRefreshTimer.value = null;
+    await loadPackages();
+  }, 800);
+};
+
 const startFallbackPolling = () => {
   if (fallbackPollingId.value) {
     return;
@@ -1565,7 +1596,7 @@ const startFallbackPolling = () => {
         if (!id || generationSnapshotIds.value.has(id)) {
           return false;
         }
-        return item.status === 'completed';
+        return item.status === 'completed' || item.status === 'generating';
       });
       if (hasNewCompleted) {
         await loadPackages();
@@ -1606,6 +1637,7 @@ const closeGenerationStream = () => {
   }
   stopStreamWatchdog();
   stopFallbackPolling();
+  stopImageRefreshTimer();
 };
 
 const openGenerationStream = (
@@ -1619,6 +1651,7 @@ const openGenerationStream = (
   streamDone.value = false;
   streamWarningShown.value = false;
   isStreaming.value = true;
+  isStreamingImages.value = false;
   lastStreamEventAt.value = Date.now();
   generationSnapshotIds.value = new Set(Object.keys(assetPackages.value));
   if (context) {
@@ -1668,9 +1701,26 @@ const openGenerationStream = (
       }
       return;
     }
+    if (payload?.type === 'text.done') {
+      isStreamingImages.value = true;
+      loadPackages().catch(() => null);
+      streamContent.value = {};
+      return;
+    }
+    if (payload?.type === 'image.generated') {
+      isStreamingImages.value = true;
+      scheduleImageRefresh();
+      return;
+    }
+    if (payload?.type === 'image.error') {
+      const message = typeof payload.message === 'string' ? payload.message : '图片生成遇到问题';
+      pushStreamWarning(message);
+      return;
+    }
     if (payload?.type === 'done') {
       streamDone.value = true;
       isStreaming.value = false;
+      isStreamingImages.value = false;
       stopFallbackPolling();
       closeGenerationStream();
       sessionStorage.removeItem('streamProjectId');
@@ -1688,6 +1738,7 @@ const openGenerationStream = (
       pushStreamError(errorText, payload.step);
       stopFallbackPolling();
       isStreaming.value = false;
+      isStreamingImages.value = false;
       closeGenerationStream();
     }
   };
@@ -1794,52 +1845,61 @@ const displaySummary = computed(() => {
   if (streamContent.value.summary) {
     return streamContent.value.summary;
   }
-  if (isStreaming.value) {
+  if (isStreaming.value && !isStreamingImages.value) {
     return '生成中…';
   }
-  return currentPackage.value?.storySummary || '生成中…';
+  if (currentPackage.value?.storySummary) {
+    return currentPackage.value.storySummary;
+  }
+  return isStreaming.value ? '生成中…' : '生成中…';
 });
 const displayArtStyle = computed<ArtStyleDisplay>(() => {
   if (streamContent.value.artStyle) {
     return streamContent.value.artStyle;
   }
-  if (isStreaming.value) {
+  if (isStreaming.value && !isStreamingImages.value) {
     return { styleName: '生成中…', stylePrompt: '', palette: [] };
   }
-  return (
-    currentPackage.value?.artStyle || {
-      styleName: '生成中…',
-      stylePrompt: '',
-      palette: [],
-    }
-  );
+  if (currentPackage.value?.artStyle) {
+    return currentPackage.value.artStyle;
+  }
+  return { styleName: '生成中…', stylePrompt: '', palette: [] };
 });
 const displaySubjects = computed(() => {
   if (streamContent.value.subjects) {
     return streamContent.value.subjects;
   }
-  if (isStreaming.value) {
+  if (isStreaming.value && !isStreamingImages.value) {
     return [];
   }
-  return currentPackage.value?.subjects || [];
+  if (currentPackage.value) {
+    return currentPackage.value.subjects || [];
+  }
+  return [];
 });
 const displayScenes = computed(() => {
   if (streamContent.value.scenes) {
     return streamContent.value.scenes;
   }
-  if (isStreaming.value) {
+  if (isStreaming.value && !isStreamingImages.value) {
     return [];
   }
-  return currentPackage.value?.scenes || [];
+  if (currentPackage.value) {
+    return currentPackage.value.scenes || [];
+  }
+  return [];
 });
 const displayStoryboard = computed(() => {
   if (streamContent.value.storyboard) {
     return streamContent.value.storyboard;
   }
-  if (isStreaming.value) {
+  if (isStreaming.value && !isStreamingImages.value) {
     return [];
   }
-  return currentPackage.value?.storyboard || [];
+  if (currentPackage.value) {
+    return currentPackage.value.storyboard || [];
+  }
+  return [];
 });
 
 watch(

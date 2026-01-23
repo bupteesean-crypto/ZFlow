@@ -117,6 +117,27 @@ def _emit_done(project_id: str, package_id: str | None) -> None:
     )
 
 
+def _emit_text_done(project_id: str, package_id: str | None) -> None:
+    publish_generation_event(
+        project_id,
+        {"type": "text.done", "package_id": package_id},
+    )
+
+
+def _emit_image_generated(project_id: str, image_id: str, image_type: str) -> None:
+    publish_generation_event(
+        project_id,
+        {"type": "image.generated", "image_id": image_id, "image_type": image_type},
+    )
+
+
+def _emit_image_error(project_id: str, image_type: str, message: str) -> None:
+    publish_generation_event(
+        project_id,
+        {"type": "image.error", "image_type": image_type, "message": message},
+    )
+
+
 def _update_task(task_id: str, status: str | None = None, progress: int | None = None) -> None:
     task = GENERATION_TASKS.get(task_id)
     if not task:
@@ -244,6 +265,20 @@ def _build_character_prompt_parts(subject: dict, blueprint: dict, sheet_prompt: 
         "style": style_prompt or "",
         "constraints": CHARACTER_QUALITY_CONSTRAINTS,
     }
+
+
+def _append_image_to_package(db: Session, package_id: str, image: dict) -> bool:
+    package = package_repo.get_package(db, package_id)
+    if not package:
+        return False
+    materials = package.get("materials") if isinstance(package.get("materials"), dict) else {}
+    metadata = materials.get("metadata") if isinstance(materials.get("metadata"), dict) else {}
+    images = metadata.get("images") if isinstance(metadata.get("images"), list) else []
+    images.append(image)
+    metadata["images"] = images
+    materials["metadata"] = metadata
+    package_repo.update_package(db, package_id, {"materials": materials})
+    return True
 
 
 def _build_character_sheet_prompt(subject: dict, blueprint: dict) -> str:
@@ -496,94 +531,6 @@ def _run_generation_task(
         blueprint = build_blueprint(llm_payload, source_prompt=llm_input)
 
         image_size = _resolve_image_size(input_config)
-        images: list[dict] = []
-        for subject in blueprint.get("subjects", []):
-            subject_id = subject.get("id")
-            subject_name = subject.get("name")
-            base_prompt = subject.get("image_prompt") if isinstance(subject.get("image_prompt"), str) else ""
-            if base_prompt.strip():
-                sheet_prompt = _compose_image_prompt(
-                    base_prompt,
-                    _build_style_prompt(blueprint.get("art_style", {})),
-                    CHARACTER_QUALITY_CONSTRAINTS,
-                )
-            else:
-                sheet_prompt = _build_character_sheet_prompt(subject, blueprint) or blueprint["summary"]["logline"]
-            image_result = None
-            try:
-                image_result = image_service.generate_image(sheet_prompt, size=image_size, model=image_model)
-            except Exception:
-                logger.exception(
-                    "generation stage=character_sheet failed project_id=%s subject_id=%s",
-                    project_id,
-                    subject_id,
-                )
-            if not isinstance(image_result, dict) or not image_result.get("url"):
-                raise ValueError("Character image generation failed")
-            prompt_parts = _build_character_prompt_parts(subject, blueprint, sheet_prompt)
-            images.append(
-                {
-                    "id": new_id(),
-                    "type": "character_sheet",
-                    "subject_id": subject_id,
-                    "subject_name": subject_name,
-                    "url": image_result.get("url"),
-                    "prompt": image_result.get("prompt") or sheet_prompt,
-                    "prompt_parts": prompt_parts,
-                    "provider": image_result.get("provider"),
-                    "model": image_result.get("model"),
-                    "model_id": image_model_id,
-                    "size": image_result.get("size"),
-                }
-            )
-
-        for scene in blueprint.get("scenes", []):
-            scene_id = scene.get("id")
-            base_prompt = scene.get("image_prompt") if isinstance(scene.get("image_prompt"), str) else ""
-            if base_prompt.strip():
-                scene_prompt = _compose_image_prompt(
-                    base_prompt,
-                    _build_style_prompt(blueprint.get("art_style", {})),
-                    SCENE_QUALITY_CONSTRAINTS,
-                )
-            else:
-                scene_prompt = scene.get("prompt_hint") or scene.get("description") or blueprint["summary"]["logline"]
-            logger.info("generation stage=image_plan project_id=%s scene_id=%s", project_id, scene_id)
-            image_result = None
-            try:
-                image_started_at = time.perf_counter()
-                image_result = image_service.generate_image(scene_prompt, size=image_size, model=image_model)
-                image_duration_ms = int((time.perf_counter() - image_started_at) * 1000)
-                logger.info(
-                    "generation stage=image_gen project_id=%s scene_id=%s duration_ms=%s request_id=%s",
-                    project_id,
-                    scene_id,
-                    image_duration_ms,
-                    (image_result or {}).get("request_id"),
-                )
-            except Exception:
-                logger.exception(
-                    "generation stage=image_gen failed project_id=%s scene_id=%s",
-                    project_id,
-                    scene_id,
-                )
-            if isinstance(image_result, dict) and image_result.get("url"):
-                prompt_parts = _build_scene_prompt_parts(scene, blueprint)
-                images.append(
-                    {
-                        "id": new_id(),
-                        "type": "scene",
-                        "scene_id": scene_id,
-                        "url": image_result.get("url"),
-                        "prompt": image_result.get("prompt") or scene_prompt,
-                        "prompt_parts": prompt_parts,
-                        "provider": image_result.get("provider"),
-                        "model": image_result.get("model"),
-                        "model_id": image_model_id,
-                        "size": image_result.get("size"),
-                    }
-                )
-
         packages = package_repo.list_packages_for_project(db, project_id)
         package_version = _next_package_version(packages)
 
@@ -603,7 +550,7 @@ def _run_generation_task(
             db,
             project_id=project_id,
             package_name=package_name,
-            status="completed",
+            status="generating",
             materials={
                 "metadata": {
                     "summary": blueprint["summary"]["logline"],
@@ -611,7 +558,7 @@ def _run_generation_task(
                     "blueprint_v1": blueprint,
                     "image_plan": image_plan,
                     "image_size": image_size,
-                    "images": images,
+                    "images": [],
                     "video_plan": {"status": "pending", "items": []},
                     "package_version": package_version,
                     "package_name": package_name,
@@ -646,6 +593,126 @@ def _run_generation_task(
         task = GENERATION_TASKS.get(task_id)
         if task is not None:
             task["material_package_id"] = package["id"]
+        _emit_text_done(project_id, package["id"])
+
+        try:
+            for subject in blueprint.get("subjects", []):
+                subject_id = subject.get("id")
+                subject_name = subject.get("name")
+                base_prompt = subject.get("image_prompt") if isinstance(subject.get("image_prompt"), str) else ""
+                if base_prompt.strip():
+                    sheet_prompt = _compose_image_prompt(
+                        base_prompt,
+                        _build_style_prompt(blueprint.get("art_style", {})),
+                        CHARACTER_QUALITY_CONSTRAINTS,
+                    )
+                else:
+                    sheet_prompt = _build_character_sheet_prompt(subject, blueprint) or blueprint["summary"]["logline"]
+                image_result = None
+                try:
+                    image_result = image_service.generate_image(sheet_prompt, size=image_size, model=image_model)
+                except Exception:
+                    logger.exception(
+                        "generation stage=character_sheet failed project_id=%s subject_id=%s",
+                        project_id,
+                        subject_id,
+                    )
+                    _emit_image_error(project_id, "character_sheet", "角色三视图生成失败")
+                if not isinstance(image_result, dict) or not image_result.get("url"):
+                    continue
+                prompt_parts = _build_character_prompt_parts(subject, blueprint, sheet_prompt)
+                image_payload = {
+                    "id": new_id(),
+                    "type": "character_sheet",
+                    "subject_id": subject_id,
+                    "subject_name": subject_name,
+                    "url": image_result.get("url"),
+                    "prompt": image_result.get("prompt") or sheet_prompt,
+                    "prompt_parts": prompt_parts,
+                    "provider": image_result.get("provider"),
+                    "model": image_result.get("model"),
+                    "model_id": image_model_id,
+                    "size": image_result.get("size"),
+                }
+                try:
+                    if _append_image_to_package(db, package["id"], image_payload):
+                        _emit_image_generated(project_id, image_payload["id"], image_payload["type"])
+                except SQLAlchemyError:
+                    db.rollback()
+                    logger.exception(
+                        "generation stage=character_sheet persist failed project_id=%s subject_id=%s",
+                        project_id,
+                        subject_id,
+                    )
+                    _emit_image_error(project_id, "character_sheet", "角色三视图保存失败")
+
+            for scene in blueprint.get("scenes", []):
+                scene_id = scene.get("id")
+                base_prompt = scene.get("image_prompt") if isinstance(scene.get("image_prompt"), str) else ""
+                if base_prompt.strip():
+                    scene_prompt = _compose_image_prompt(
+                        base_prompt,
+                        _build_style_prompt(blueprint.get("art_style", {})),
+                        SCENE_QUALITY_CONSTRAINTS,
+                    )
+                else:
+                    scene_prompt = scene.get("prompt_hint") or scene.get("description") or blueprint["summary"]["logline"]
+                logger.info("generation stage=image_plan project_id=%s scene_id=%s", project_id, scene_id)
+                image_result = None
+                try:
+                    image_started_at = time.perf_counter()
+                    image_result = image_service.generate_image(scene_prompt, size=image_size, model=image_model)
+                    image_duration_ms = int((time.perf_counter() - image_started_at) * 1000)
+                    logger.info(
+                        "generation stage=image_gen project_id=%s scene_id=%s duration_ms=%s request_id=%s",
+                        project_id,
+                        scene_id,
+                        image_duration_ms,
+                        (image_result or {}).get("request_id"),
+                    )
+                except Exception:
+                    logger.exception(
+                        "generation stage=image_gen failed project_id=%s scene_id=%s",
+                        project_id,
+                        scene_id,
+                    )
+                    _emit_image_error(project_id, "scene", "场景图生成失败")
+                if not isinstance(image_result, dict) or not image_result.get("url"):
+                    continue
+                prompt_parts = _build_scene_prompt_parts(scene, blueprint)
+                image_payload = {
+                    "id": new_id(),
+                    "type": "scene",
+                    "scene_id": scene_id,
+                    "url": image_result.get("url"),
+                    "prompt": image_result.get("prompt") or scene_prompt,
+                    "prompt_parts": prompt_parts,
+                    "provider": image_result.get("provider"),
+                    "model": image_result.get("model"),
+                    "model_id": image_model_id,
+                    "size": image_result.get("size"),
+                }
+                try:
+                    if _append_image_to_package(db, package["id"], image_payload):
+                        _emit_image_generated(project_id, image_payload["id"], image_payload["type"])
+                except SQLAlchemyError:
+                    db.rollback()
+                    logger.exception(
+                        "generation stage=image_gen persist failed project_id=%s scene_id=%s",
+                        project_id,
+                        scene_id,
+                    )
+                    _emit_image_error(project_id, "scene", "场景图保存失败")
+
+            try:
+                package_repo.update_package(db, package["id"], {"status": "completed"})
+            except SQLAlchemyError:
+                db.rollback()
+                logger.exception("generation stage=image_finalize failed project_id=%s", project_id)
+                _emit_image_error(project_id, "all", "图片阶段收尾失败")
+        except Exception:
+            logger.exception("generation stage=image_pipeline failed project_id=%s", project_id)
+            _emit_image_error(project_id, "all", "图片生成失败")
         _emit_done(project_id, package["id"])
         current_step = "done"
         _update_task(task_id, status="completed", progress=STEP_PROGRESS["done"])
