@@ -633,6 +633,7 @@ def _run_generation_task(
                     "model": image_result.get("model"),
                     "model_id": image_model_id,
                     "size": image_result.get("size"),
+                    "is_active": True,
                 }
                 try:
                     if _append_image_to_package(db, package["id"], image_payload):
@@ -646,63 +647,64 @@ def _run_generation_task(
                     )
                     _emit_image_error(project_id, "character_sheet", "角色三视图保存失败")
 
-            for scene in blueprint.get("scenes", []):
-                scene_id = scene.get("id")
-                base_prompt = scene.get("image_prompt") if isinstance(scene.get("image_prompt"), str) else ""
-                if base_prompt.strip():
-                    scene_prompt = _compose_image_prompt(
-                        base_prompt,
-                        _build_style_prompt(blueprint.get("art_style", {})),
-                        SCENE_QUALITY_CONSTRAINTS,
-                    )
-                else:
-                    scene_prompt = scene.get("prompt_hint") or scene.get("description") or blueprint["summary"]["logline"]
-                logger.info("generation stage=image_plan project_id=%s scene_id=%s", project_id, scene_id)
-                image_result = None
-                try:
-                    image_started_at = time.perf_counter()
-                    image_result = image_service.generate_image(scene_prompt, size=image_size, model=image_model)
-                    image_duration_ms = int((time.perf_counter() - image_started_at) * 1000)
-                    logger.info(
-                        "generation stage=image_gen project_id=%s scene_id=%s duration_ms=%s request_id=%s",
-                        project_id,
-                        scene_id,
-                        image_duration_ms,
-                        (image_result or {}).get("request_id"),
-                    )
-                except Exception:
-                    logger.exception(
-                        "generation stage=image_gen failed project_id=%s scene_id=%s",
-                        project_id,
-                        scene_id,
-                    )
-                    _emit_image_error(project_id, "scene", "场景图生成失败")
-                if not isinstance(image_result, dict) or not image_result.get("url"):
-                    continue
-                prompt_parts = _build_scene_prompt_parts(scene, blueprint)
-                image_payload = {
-                    "id": new_id(),
-                    "type": "scene",
-                    "scene_id": scene_id,
-                    "url": image_result.get("url"),
-                    "prompt": image_result.get("prompt") or scene_prompt,
-                    "prompt_parts": prompt_parts,
-                    "provider": image_result.get("provider"),
-                    "model": image_result.get("model"),
-                    "model_id": image_model_id,
-                    "size": image_result.get("size"),
-                }
-                try:
-                    if _append_image_to_package(db, package["id"], image_payload):
-                        _emit_image_generated(project_id, image_payload["id"], image_payload["type"])
-                except SQLAlchemyError:
-                    db.rollback()
-                    logger.exception(
-                        "generation stage=image_gen persist failed project_id=%s scene_id=%s",
-                        project_id,
-                        scene_id,
-                    )
-                    _emit_image_error(project_id, "scene", "场景图保存失败")
+                for scene in blueprint.get("scenes", []):
+                    scene_id = scene.get("id")
+                    base_prompt = scene.get("image_prompt") if isinstance(scene.get("image_prompt"), str) else ""
+                    if base_prompt.strip():
+                        scene_prompt = _compose_image_prompt(
+                            base_prompt,
+                            _build_style_prompt(blueprint.get("art_style", {})),
+                            SCENE_QUALITY_CONSTRAINTS,
+                        )
+                    else:
+                        scene_prompt = scene.get("prompt_hint") or scene.get("description") or blueprint["summary"]["logline"]
+                    logger.info("generation stage=image_plan project_id=%s scene_id=%s", project_id, scene_id)
+                    image_result = None
+                    try:
+                        image_started_at = time.perf_counter()
+                        image_result = image_service.generate_image(scene_prompt, size=image_size, model=image_model)
+                        image_duration_ms = int((time.perf_counter() - image_started_at) * 1000)
+                        logger.info(
+                            "generation stage=image_gen project_id=%s scene_id=%s duration_ms=%s request_id=%s",
+                            project_id,
+                            scene_id,
+                            image_duration_ms,
+                            (image_result or {}).get("request_id"),
+                        )
+                    except Exception:
+                        logger.exception(
+                            "generation stage=image_gen failed project_id=%s scene_id=%s",
+                            project_id,
+                            scene_id,
+                        )
+                        _emit_image_error(project_id, "scene", "场景图生成失败")
+                    if not isinstance(image_result, dict) or not image_result.get("url"):
+                        continue
+                    prompt_parts = _build_scene_prompt_parts(scene, blueprint)
+                    image_payload = {
+                        "id": new_id(),
+                        "type": "scene",
+                        "scene_id": scene_id,
+                        "url": image_result.get("url"),
+                        "prompt": image_result.get("prompt") or scene_prompt,
+                        "prompt_parts": prompt_parts,
+                        "provider": image_result.get("provider"),
+                        "model": image_result.get("model"),
+                        "model_id": image_model_id,
+                        "size": image_result.get("size"),
+                        "is_active": True,
+                    }
+                    try:
+                        if _append_image_to_package(db, package["id"], image_payload):
+                            _emit_image_generated(project_id, image_payload["id"], image_payload["type"])
+                    except SQLAlchemyError:
+                        db.rollback()
+                        logger.exception(
+                            "generation stage=image_gen persist failed project_id=%s scene_id=%s",
+                            project_id,
+                            scene_id,
+                        )
+                        _emit_image_error(project_id, "scene", "场景图保存失败")
 
             try:
                 package_repo.update_package(db, package["id"], {"status": "completed"})

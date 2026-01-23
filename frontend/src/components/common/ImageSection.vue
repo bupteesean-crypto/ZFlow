@@ -13,7 +13,7 @@
         @click="emit('select', item)"
       >
         <img :src="item.url" :alt="item.prompt || '生成图片'" class="image" />
-        <div v-if="item.isActive" class="active-badge">✅</div>
+        <div v-if="item.isActive" class="active-badge">已采用</div>
         <button class="preview-btn" @click.stop="emit('preview', item)">查看大图</button>
         <div class="meta">
           <div class="prompt">{{ item.prompt || '暂无提示词' }}</div>

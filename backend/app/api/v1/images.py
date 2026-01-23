@@ -292,11 +292,18 @@ async def regenerate_image(
         "model": image_result.get("model"),
         "model_id": resolved_model_id,
         "size": image_result.get("size"),
+        "is_active": True,
     }
 
     materials = dict(package.materials or {})
     metadata = dict(materials.get("metadata") or {})
     existing_images = list(metadata.get("images") or [])
+    target_group = _group_key(source_image)
+    for image in existing_images:
+        if not isinstance(image, dict):
+            continue
+        if _group_key(image) == target_group:
+            image["is_active"] = False
     existing_images.append(new_image)
     metadata["images"] = existing_images
     if resolved_model_id:

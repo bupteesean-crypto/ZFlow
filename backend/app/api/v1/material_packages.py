@@ -434,6 +434,7 @@ def _run_feedback_image_generation(
                 "model": image_result.get("model"),
                 "model_id": model_id,
                 "size": image_result.get("size"),
+                "is_active": True,
             }
             try:
                 if _append_image_to_package(db, package_id, image_payload):
@@ -485,6 +486,7 @@ def _run_feedback_image_generation(
                 "model": image_result.get("model"),
                 "model_id": model_id,
                 "size": image_result.get("size"),
+                "is_active": True,
             }
             try:
                 if _append_image_to_package(db, package_id, image_payload):

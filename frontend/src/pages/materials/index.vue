@@ -92,23 +92,47 @@
             :class="['section', { selected: selectedTextTarget?.type === 'summary' }]"
             @click="selectTextTarget({ type: 'summary' }, '故事摘要', displaySummary)"
           >
-            <h3>故事摘要</h3>
+            <h3>
+              故事摘要
+              <span v-if="isSummaryAdopted" class="adopted-badge">已采用</span>
+            </h3>
             <div class="asset-preview">{{ displaySummary || '生成中…' }}</div>
           </section>
 
           <!-- Art Style Section -->
           <section
             :class="['section', { selected: selectedTextTarget?.type === 'art_style' }]"
-            @click="selectTextTarget({ type: 'art_style' }, '美术风格', buildArtStyleContent(displayArtStyle))"
+            @click="selectTextTarget({ type: 'art_style' }, '美术风格', buildArtStyleContent(artStyleDisplayValue))"
           >
-            <h3>美术风格</h3>
+            <h3>
+              美术风格
+              <span v-if="isArtStyleAdopted" class="adopted-badge">已采用</span>
+            </h3>
+            <div v-if="artStyleVersions.length > 1" class="version-switch">
+              <button
+                v-for="version in artStyleVersions"
+                :key="version.id"
+                :class="['version-chip', { active: artStylePreviewId === version.id }]"
+                @click.stop="artStylePreviewId = version.id"
+              >
+                {{ version.label }}
+                <span v-if="version.isActive" class="version-active">已采用</span>
+              </button>
+              <button
+                v-if="canAdoptArtStylePreview"
+                class="version-adopt-btn"
+                @click.stop="adoptArtStylePreview"
+              >
+                设为采用
+              </button>
+            </div>
             <div class="asset-preview">
-              <div class="detail-row">风格：{{ displayArtStyle.styleName || '生成中…' }}</div>
-              <div class="detail-row" v-if="displayArtStyle.palette.length">
-                调色盘：{{ displayArtStyle.palette.join(' / ') }}
+              <div class="detail-row">风格：{{ artStyleDisplayValue.styleName || '生成中…' }}</div>
+              <div class="detail-row" v-if="artStyleDisplayValue.palette.length">
+                调色盘：{{ artStyleDisplayValue.palette.join(' / ') }}
               </div>
-              <div class="detail-row" v-if="displayArtStyle.stylePrompt">
-                提示词：{{ displayArtStyle.stylePrompt }}
+              <div class="detail-row" v-if="artStyleDisplayValue.stylePrompt">
+                提示词：{{ artStyleDisplayValue.stylePrompt }}
               </div>
             </div>
           </section>
@@ -125,7 +149,10 @@
               :class="['detail-card', { selected: isSubjectSelected(subject) }]"
               @click="selectTextTarget({ type: 'subject', subjectId: subject.id }, `角色 · ${subject.name}`, buildSubjectContent(subject))"
             >
-              <div class="detail-title">{{ subject.name || '角色' }}</div>
+              <div class="detail-title">
+                {{ subject.name || '角色' }}
+                <span v-if="isSubjectAdopted(subject)" class="adopted-badge">已采用</span>
+              </div>
               <div class="detail-row">角色定位：{{ subject.role || '未指定' }}</div>
               <div class="detail-row">描述：{{ subject.description || '暂无描述' }}</div>
               <div class="detail-row" v-if="subject.visualTraits.length">
@@ -141,11 +168,12 @@
                   @click.stop="handleImageClick(img, `角色 · ${subject.name}`)"
                 >
                   <img :src="img.url" :alt="img.prompt || 'Character view'" class="thumb-image" />
-                  <div v-if="img.isActive" class="thumb-active">✅</div>
+                  <div v-if="img.isActive" class="thumb-active">已采用</div>
                   <button class="thumb-preview-btn" @click.stop="openImagePreview(img)">查看大图</button>
                   <div class="thumb-meta">{{ formatImageLabel(img) }}</div>
                 </div>
                 <div v-if="showSubjectImagePlaceholder(subject) || isLoadingSubject(subject)" class="thumb-card loading-card">
+                  <div class="loading-spinner"></div>
                   <div class="loading-text">生成中...</div>
                 </div>
               </div>
@@ -165,7 +193,10 @@
               :class="['detail-card', { selected: isSceneSelected(scene) }]"
               @click="selectTextTarget({ type: 'scene', sceneId: scene.id }, `场景 · ${scene.name}`, buildSceneContent(scene))"
             >
-              <div class="detail-title">{{ scene.name || '场景' }}</div>
+              <div class="detail-title">
+                {{ scene.name || '场景' }}
+                <span v-if="isSceneAdopted(scene)" class="adopted-badge">已采用</span>
+              </div>
               <div class="detail-row">情绪：{{ scene.mood || '未指定' }}</div>
               <div class="detail-row">描述：{{ scene.description || '暂无描述' }}</div>
               <div class="detail-row" v-if="scene.purpose">目的：{{ scene.purpose }}</div>
@@ -178,11 +209,12 @@
                   @click.stop="handleImageClick(img, `场景 · ${scene.name}`)"
                 >
                   <img :src="img.url" :alt="img.prompt || 'Scene'" class="thumb-image" />
-                  <div v-if="img.isActive" class="thumb-active">✅</div>
+                  <div v-if="img.isActive" class="thumb-active">已采用</div>
                   <button class="thumb-preview-btn" @click.stop="openImagePreview(img)">查看大图</button>
                   <div class="thumb-meta">{{ formatImageLabel(img) }}</div>
                 </div>
                 <div v-if="showSceneImagePlaceholder(scene) || isLoadingScene(scene)" class="thumb-card loading-card">
+                  <div class="loading-spinner"></div>
                   <div class="loading-text">生成中...</div>
                 </div>
               </div>
@@ -203,7 +235,10 @@
                 :class="['storyboard-item', { selected: selectedTextTarget?.type === 'storyboard_description' && selectedTextTarget?.shotId === shot.id }]"
                 @click="selectTextTarget({ type: 'storyboard_description', shotId: shot.id }, `分镜 · ${shot.shotNumber}`, shot.description)"
               >
-                <div class="storyboard-title">镜头 {{ shot.shotNumber }}</div>
+                <div class="storyboard-title">
+                  镜头 {{ shot.shotNumber }}
+                  <span v-if="isStoryboardAdopted(shot)" class="adopted-badge">已采用</span>
+                </div>
                 <div class="storyboard-meta">
                   场景：{{ shot.sceneName || shot.sceneId || '未关联' }} · 时长：{{ shot.durationSec }}s · 镜头：{{ shot.camera || '未指定' }}
                 </div>
@@ -292,6 +327,7 @@
               <div class="field-label">修改意见</div>
               <textarea v-model="textFeedbackInput" placeholder="例如：更温暖的色调 / 语气更紧张" />
               <button class="link-btn mt-2" :disabled="isTextBusy" @click="submitTextFeedback">提交修改意见</button>
+              <div v-if="isTextGenerating" class="status-hint">文本生成中…</div>
               <div class="text-11 text-slate-500 mt-2">提示：提交后会生成新的候选版本并存。</div>
             </div>
             <div v-else-if="currentObject.kind === 'text'" class="empty-text">该对象暂不支持修改。</div>
@@ -330,6 +366,14 @@
             </div>
             <div v-else-if="isTextSelected">
               <div v-if="currentTextCandidates.length === 0" class="empty-text">暂无候选版本</div>
+              <div v-if="isTextGenerating" class="candidate-card loading-card">
+                <div class="candidate-header">
+                  <span>正在生成新候选…</span>
+                  <span class="candidate-meta">请稍候</span>
+                </div>
+                <div class="candidate-body">生成完成后会显示在候选列表中。</div>
+                <div class="loading-bar"></div>
+              </div>
               <div v-for="candidate in currentTextCandidates" :key="candidate.id" class="candidate-card">
                 <div class="candidate-header">
                   <span>{{ candidate.isActive ? '✅ 已采用' : '候选版本' }}</span>
@@ -516,7 +560,9 @@ interface AssetPackage {
   parentPackageId?: string;
   userPrompt: string;
   userFeedback: string;
+  baseSummary: string;
   storySummary: string;
+  baseArtStyle: ArtStyleDisplay;
   summaryCandidates: SummaryCandidateGroup;
   artStyle: ArtStyleDisplay;
   artStyleCandidates: ArtStyleCandidateGroup;
@@ -621,10 +667,85 @@ const isRegenerating = ref(false);
 const regeneratingGroupKey = ref('');
 const isTextSelected = computed(() => !!selectedTextTarget.value);
 const isImageAdopting = ref(false);
+const isTextGenerating = ref(false);
 const isPropagating = ref(false);
 const isImageBusy = computed(() => isRegenerating.value || isImageAdopting.value || isPropagating.value);
-const isTextBusy = computed(() => isTextAdopting.value || isPropagating.value);
+const isTextBusy = computed(() => isTextAdopting.value || isTextGenerating.value || isPropagating.value);
 const previewImage = ref<GeneratedImage | null>(null);
+const pendingImageGroups = ref<string[]>([]);
+const artStylePreviewId = ref<string>('');
+
+const isSummaryAdopted = computed(() => Boolean(currentPackage.value?.summaryCandidates.activeId));
+const isArtStyleAdopted = computed(() => Boolean(currentPackage.value?.artStyleCandidates.activeId));
+const isSubjectAdopted = (subject: SubjectDisplay) => {
+  const pkg = currentPackage.value;
+  if (!pkg || !subject.id) return false;
+  return Boolean(pkg.subjectCandidates[subject.id]?.activeId);
+};
+const isSceneAdopted = (scene: SceneDisplay) => {
+  const pkg = currentPackage.value;
+  if (!pkg || !scene.id) return false;
+  return Boolean(pkg.sceneCandidates[scene.id]?.activeId);
+};
+const isStoryboardAdopted = (shot: StoryboardDisplay) => {
+  const pkg = currentPackage.value;
+  if (!pkg || !shot.id) return false;
+  return Boolean(pkg.storyboardCandidates[shot.id]?.activeId);
+};
+
+const artStyleVersions = computed(() => {
+  const pkg = currentPackage.value;
+  if (!pkg) return [];
+  const versions = [
+    {
+      id: 'base',
+      label: '原始',
+      value: pkg.baseArtStyle,
+      isActive: !pkg.artStyleCandidates.activeId,
+    },
+  ];
+  pkg.artStyleCandidates.candidates.forEach((candidate, index) => {
+    versions.push({
+      id: candidate.id,
+      label: `候选 ${index + 1}`,
+      value: candidate.value,
+      isActive: candidate.isActive,
+    });
+  });
+  return versions;
+});
+
+const artStylePreviewValue = computed(() => {
+  const versions = artStyleVersions.value;
+  if (!versions.length) return null;
+  const fallback = versions.find(item => item.isActive) || versions[0];
+  const selectedId = artStylePreviewId.value || fallback.id;
+  return versions.find(item => item.id === selectedId)?.value || fallback.value;
+});
+
+const artStyleDisplayValue = computed(() => {
+  if (streamContent.value.artStyle) {
+    return streamContent.value.artStyle;
+  }
+  const preview = artStylePreviewValue.value;
+  if (preview) {
+    return preview;
+  }
+  return displayArtStyle.value;
+});
+
+const artStylePreviewMeta = computed(() => {
+  const versions = artStyleVersions.value;
+  if (!versions.length) return null;
+  const fallback = versions.find(item => item.isActive) || versions[0];
+  const selectedId = artStylePreviewId.value || fallback.id;
+  return versions.find(item => item.id === selectedId) || fallback;
+});
+
+const canAdoptArtStylePreview = computed(() => {
+  const meta = artStylePreviewMeta.value;
+  return Boolean(meta && meta.id !== 'base' && !meta.isActive);
+});
 
 const mapPackageStatus = (status: string) => {
   if (status === 'completed') return 'done';
@@ -781,12 +902,44 @@ const isLoadingScene = (scene: SceneDisplay) => {
   return Boolean(sceneName && sceneName === scene.name);
 };
 
+const addPendingGroup = (groupKey: string) => {
+  if (!groupKey) return;
+  if (!pendingImageGroups.value.includes(groupKey)) {
+    pendingImageGroups.value = [...pendingImageGroups.value, groupKey];
+  }
+};
+
+const removePendingGroup = (groupKey: string) => {
+  if (!groupKey) return;
+  pendingImageGroups.value = pendingImageGroups.value.filter(key => key !== groupKey);
+};
+
+const isGroupPending = (groupKey: string) => {
+  return pendingImageGroups.value.includes(groupKey);
+};
+
+const getSubjectGroupKey = (subject: SubjectDisplay) => {
+  if (!subject.id) return '';
+  return `subject:${subject.id}:character_sheet`;
+};
+
+const getSceneGroupKey = (scene: SceneDisplay) => {
+  if (!scene.id) return '';
+  return `scene:${scene.id}:scene`;
+};
+
 const showSubjectImagePlaceholder = (subject: SubjectDisplay) => {
+  if (isGroupPending(getSubjectGroupKey(subject))) {
+    return true;
+  }
   if (!isStreamingImages.value) return false;
   return !subject.images || subject.images.length === 0;
 };
 
 const showSceneImagePlaceholder = (scene: SceneDisplay) => {
+  if (isGroupPending(getSceneGroupKey(scene))) {
+    return true;
+  }
   if (!isStreamingImages.value) return false;
   return !scene.images || scene.images.length === 0;
 };
@@ -859,9 +1012,14 @@ const submitTextFeedback = async () => {
     alert('请输入修改意见');
     return;
   }
+  isTextGenerating.value = true;
   try {
     if (target.type === 'art_style') {
       await submitArtStyleFeedback(pkg.id, feedback);
+      textFeedbackInput.value = '';
+      await loadPackages();
+      await confirmArtStylePropagation();
+      return;
     } else if (target.type === 'summary') {
       await submitSummaryFeedback(pkg.id, feedback);
     } else if (target.type === 'subject' && target.subjectId) {
@@ -875,6 +1033,8 @@ const submitTextFeedback = async () => {
     await loadPackages();
   } catch (err) {
     alert(err instanceof Error ? err.message : '提交修改意见失败');
+  } finally {
+    isTextGenerating.value = false;
   }
 };
 
@@ -938,40 +1098,88 @@ const propagateArtStyleToImages = async (artStyle: ArtStyleDisplay) => {
   if (!pkg) {
     return;
   }
-  const candidates = pkg.allImages.filter(image => image.id);
+  const groupMap = new Map<string, GeneratedImage>();
+  pkg.allImages.forEach(image => {
+    if (!image.id) return;
+    const groupKey = getImageGroupKey(image);
+    const existing = groupMap.get(groupKey);
+    if (!existing || (image.isActive && !existing.isActive)) {
+      groupMap.set(groupKey, image);
+    }
+  });
+  const candidates = Array.from(groupMap.values());
   if (candidates.length === 0) {
     alert('当前素材包没有可重新生成的图片');
     return;
   }
+  pendingImageGroups.value = Array.from(groupMap.keys());
   isPropagating.value = true;
+  let failureCount = 0;
   try {
     for (const image of candidates) {
-      if (!image.id) continue;
-      const prompt = buildPropagationPrompt(image, artStyle);
-      if (!prompt) continue;
-      const size = getImageSizeForGeneration();
-      await regenerateImage(
-        image.id,
-        prompt,
-        "art_style_propagation",
-        size || undefined,
-        selectedImageModelId.value || undefined
-      );
+      if (!image.id) {
+        failureCount += 1;
+        continue;
+      }
+      const groupKey = getImageGroupKey(image);
+      addPendingGroup(groupKey);
+      try {
+        const prompt = buildPropagationPrompt(image, artStyle);
+        if (!prompt) {
+          failureCount += 1;
+          continue;
+        }
+        const size = getImageSizeForGeneration();
+        await regenerateImage(
+          image.id,
+          prompt,
+          "art_style_propagation",
+          size || undefined,
+          selectedImageModelId.value || undefined
+        );
+        await loadPackages();
+      } catch (err) {
+        failureCount += 1;
+      } finally {
+        removePendingGroup(groupKey);
+      }
     }
-    await loadPackages();
   } catch (err) {
     alert(err instanceof Error ? err.message : '美术风格传播失败');
   } finally {
     isPropagating.value = false;
+    pendingImageGroups.value = [];
+    if (failureCount > 0) {
+      alert(`有 ${failureCount} 张图片未能完成生成，请稍后重试。`);
+    }
   }
 };
 
 const confirmArtStylePropagation = async () => {
   const pkg = currentPackage.value;
   if (!pkg) return;
+  if (isPropagating.value) return;
   const confirmed = window.confirm('是否基于当前美术风格，重新生成相关图片？');
   if (!confirmed) return;
   await propagateArtStyleToImages(pkg.artStyle);
+};
+
+const adoptArtStylePreview = async () => {
+  const pkg = currentPackage.value;
+  const meta = artStylePreviewMeta.value;
+  if (!pkg || !meta || meta.id === 'base' || meta.isActive) {
+    return;
+  }
+  isTextAdopting.value = true;
+  try {
+    await adoptTextCandidate(pkg.id, 'art_style', meta.id);
+    await loadPackages();
+    await confirmArtStylePropagation();
+  } catch (err) {
+    alert(err instanceof Error ? err.message : '采用美术风格失败');
+  } finally {
+    isTextAdopting.value = false;
+  }
 };
 
 const normalizeText = (value: unknown, fallback = '') => {
@@ -1353,7 +1561,9 @@ const mapMaterialPackage = (pkg: MaterialPackage): AssetPackage => {
     parentPackageId: parentPackageId || undefined,
     userPrompt,
     userFeedback,
+    baseSummary: blueprintSummary,
     storySummary,
+    baseArtStyle: blueprintArtStyle,
     summaryCandidates,
     artStyle,
     artStyleCandidates,
@@ -1935,6 +2145,8 @@ const formatTime = (ts: number) => {
 
 const selectPackage = (id: string) => {
   currentPackageId.value = id;
+  artStylePreviewId.value = '';
+  refreshSelectionFromPackage();
   renderWorkspace();
 };
 
@@ -1996,6 +2208,99 @@ const selectTextTarget = (
   editInput.value = '';
   feedbackInput.value = '';
 };
+
+const refreshSelectionFromPackage = () => {
+  const pkg = currentPackage.value;
+  if (!pkg) return;
+  const versions = artStyleVersions.value;
+  if (versions.length) {
+    const match = versions.find(item => item.id === artStylePreviewId.value);
+    if (!match) {
+      const fallback = versions.find(item => item.isActive) || versions[0];
+      artStylePreviewId.value = fallback?.id || '';
+    }
+  }
+  if (selectedImage.value?.id) {
+    const updatedImage = pkg.allImages.find(img => img.id === selectedImage.value?.id);
+    if (updatedImage) {
+      selectedImage.value = updatedImage;
+      currentObject.value = {
+        ...currentObject.value,
+        kind: 'image',
+        content: updatedImage.prompt || '',
+      };
+    }
+  }
+  if (!selectedTextTarget.value) return;
+  const target = selectedTextTarget.value;
+  if (target.type === 'summary') {
+    currentObject.value = {
+      type: target.type,
+      path: '故事摘要',
+      content: pkg.storySummary || '',
+      kind: 'text',
+    };
+    return;
+  }
+  if (target.type === 'art_style') {
+    syncSelectedArtStyle();
+    return;
+  }
+  if (target.type === 'subject' && target.subjectId) {
+    const subject = pkg.subjects.find(item => item.id === target.subjectId);
+    if (subject) {
+      currentObject.value = {
+        type: target.type,
+        path: `角色 · ${subject.name}`,
+        content: buildSubjectContent(subject),
+        kind: 'text',
+      };
+    }
+    return;
+  }
+  if (target.type === 'scene' && target.sceneId) {
+    const scene = pkg.scenes.find(item => item.id === target.sceneId);
+    if (scene) {
+      currentObject.value = {
+        type: target.type,
+        path: `场景 · ${scene.name}`,
+        content: buildSceneContent(scene),
+        kind: 'text',
+      };
+    }
+    return;
+  }
+  if (target.type === 'storyboard_description' && target.shotId) {
+    const shot = pkg.storyboard.find(item => item.id === target.shotId);
+    if (shot) {
+      currentObject.value = {
+        type: target.type,
+        path: `分镜 · ${shot.shotNumber}`,
+        content: shot.description || '',
+        kind: 'text',
+      };
+    }
+  }
+};
+
+const syncSelectedArtStyle = () => {
+  if (selectedTextTarget.value?.type !== 'art_style') {
+    return;
+  }
+  currentObject.value = {
+    type: 'art_style',
+    path: '美术风格',
+    content: buildArtStyleContent(artStyleDisplayValue.value),
+    kind: 'text',
+  };
+};
+
+watch(
+  () => artStylePreviewId.value,
+  () => {
+    syncSelectedArtStyle();
+  }
+);
 
 const handleImageClick = async (image: GeneratedImage, path: string) => {
   selectImage(image, path);
@@ -2226,12 +2531,21 @@ const loadPackages = async () => {
     assetPackages.value[pkg.id] = pkg;
   });
   if (mapped.length > 0) {
+    const previousId = currentPackageId.value;
     const latest = mapped.sort((a, b) => b.createdAt - a.createdAt)[0];
-    currentPackageId.value = latest.id;
+    const fallbackId = latest?.id;
+    const preferred = previousId && assetPackages.value[previousId] ? previousId : fallbackId;
+    if (preferred) {
+      currentPackageId.value = preferred;
+    }
     rebuildConversationMessages(mapped);
   } else {
     baseMessages.value = [];
   }
+  if (!isStreaming.value) {
+    streamContent.value = {};
+  }
+  refreshSelectionFromPackage();
   if (streamSource.value && generationSnapshotIds.value.size === 0) {
     generationSnapshotIds.value = new Set(Object.keys(assetPackages.value));
   }
@@ -2913,6 +3227,47 @@ onUnmounted(() => {
   margin-bottom: 4px;
 }
 
+.version-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0 6px;
+}
+
+.version-chip {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(10, 16, 28, 0.6);
+  color: var(--md-on-surface);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.version-chip.active {
+  border-color: rgba(var(--md-accent-rgb), 0.7);
+  color: var(--md-primary);
+}
+
+.version-active {
+  font-size: 10px;
+  color: #6ee7b7;
+}
+
+.version-adopt-btn {
+  border: 1px solid rgba(var(--md-accent-rgb), 0.35);
+  background: rgba(var(--md-accent-rgb), 0.18);
+  color: var(--md-primary);
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
 .empty-text {
   font-size: 12px;
   color: var(--md-on-surface-variant);
@@ -3000,6 +3355,15 @@ onUnmounted(() => {
 
 .loading-text {
   padding: 6px;
+}
+
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid rgba(148, 163, 184, 0.25);
+  border-top-color: var(--md-primary);
+  animation: spin 0.9s linear infinite;
 }
 
 .thumb-meta {
@@ -3128,5 +3492,17 @@ onUnmounted(() => {
 .storyboard-desc {
   font-size: 12px;
   color: var(--md-on-surface);
+}
+
+.adopted-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.16);
 }
 </style>

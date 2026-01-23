@@ -183,6 +183,7 @@ async def art_style_feedback(
         group_candidates = []
         group["candidates"] = group_candidates
     group_candidates.append(candidate)
+    group["active_id"] = candidate["id"]
     # NOTE: blueprint_v1 is immutable; store edits in text_candidates_v1 only.
     metadata["text_candidates_v1"] = text_candidates
     materials["metadata"] = metadata
@@ -240,6 +241,7 @@ async def summary_feedback(
         group_candidates = []
         group["candidates"] = group_candidates
     group_candidates.append(candidate)
+    group["active_id"] = candidate["id"]
     metadata["text_candidates_v1"] = text_candidates
     materials["metadata"] = metadata
 
@@ -304,6 +306,7 @@ async def subject_feedback(
         group_candidates = []
         subject_group["candidates"] = group_candidates
     group_candidates.append(candidate)
+    subject_group["active_id"] = candidate["id"]
     metadata["text_candidates_v1"] = text_candidates
     materials["metadata"] = metadata
 
@@ -368,6 +371,7 @@ async def scene_feedback(
         group_candidates = []
         scene_group["candidates"] = group_candidates
     group_candidates.append(candidate)
+    scene_group["active_id"] = candidate["id"]
     metadata["text_candidates_v1"] = text_candidates
     materials["metadata"] = metadata
 
@@ -432,6 +436,7 @@ async def storyboard_feedback(
         group_candidates = []
         shot_group["candidates"] = group_candidates
     group_candidates.append(candidate)
+    shot_group["active_id"] = candidate["id"]
 
     # NOTE: blueprint_v1 is immutable; store edits in text_candidates_v1 only.
     metadata["text_candidates_v1"] = text_candidates
