@@ -7,4 +7,13 @@ const request = axios.create({
   },
 });
 
+request.interceptors.request.use(config => {
+  const token = sessionStorage.getItem('session_token') || sessionStorage.getItem('sessionToken');
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 export default request;

@@ -9,6 +9,9 @@ type ApiResponse<T> = {
 export type Project = {
   id: string;
   name: string;
+  owner_user_id?: string | null;
+  company_id?: string | null;
+  visibility?: "private" | "company";
   description?: string | null;
   status: string;
   stage?: string;
@@ -50,6 +53,7 @@ export async function createProject(payload: {
   name?: string;
   space_type?: "personal" | "team";
   team_space_id?: string | null;
+  visibility?: "private" | "company";
 }): Promise<Project> {
   const { data } = await request.post<ApiResponse<Project>>("/projects", payload);
   if (data.code !== 0) {

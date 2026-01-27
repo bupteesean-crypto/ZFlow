@@ -30,67 +30,39 @@
             </div>
           </div>
 
-          <div class="tabs">
-            <button
-              :class="['tab', { active: loginMode === 'personal' }]"
-              @click="loginMode = 'personal'"
-            >
-              个人登录
-            </button>
-            <button
-              :class="['tab', { active: loginMode === 'team' }]"
-              @click="loginMode = 'team'"
-            >
-              团队登录
-            </button>
-          </div>
-
           <form class="login-form" @submit.prevent="handleLogin">
             <div class="form-group">
-              <label class="label">手机号</label>
-              <div class="phone-input">
-                <div class="country-code">+86</div>
-                <input
-                  v-model="phone"
-                  type="tel"
-                  placeholder="请输入手机号"
-                  maxlength="11"
-                />
-              </div>
+              <label class="label">账号</label>
+              <input
+                v-model="username"
+                type="text"
+                placeholder="请输入账号"
+                autocomplete="username"
+              />
             </div>
 
             <div class="form-group">
-              <label class="label">验证码</label>
-              <div class="code-row">
-                <input
-                  v-model="code"
-                  type="text"
-                  placeholder="6位验证码"
-                  maxlength="6"
-                />
-                <button type="button" class="btn-code" @click="sendCode">
-                  {{ codeButtonText }}
-                </button>
-              </div>
-            </div>
-
-            <div v-if="loginMode === 'team'" class="form-group">
-              <label class="label">团队邀请码</label>
+              <label class="label">密码</label>
               <input
-                v-model="teamInvite"
-                type="text"
-                placeholder="请输入团队邀请码"
+                v-model="password"
+                type="password"
+                placeholder="请输入密码"
+                autocomplete="current-password"
               />
             </div>
 
             <button type="submit" class="btn-submit" :disabled="loading">
-              {{ loading ? '登录中...' : '验证码登录' }}
+              {{ loading ? '登录中...' : '账号登录' }}
             </button>
 
             <div class="agreement">
               登录即代表同意
               <a href="javascript:void(0)" @click="showServiceModal = true">《服务协议》</a>
               <a href="javascript:void(0)" @click="showPrivacyModal = true">《隐私政策》</a>
+            </div>
+
+            <div class="admin-link">
+              <RouterLink to="/admin/users">账号管理入口</RouterLink>
             </div>
           </form>
         </div>
@@ -122,58 +94,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { login } from '@/api/auth';
 
 const router = useRouter();
 
-const loginMode = ref<'personal' | 'team'>('personal');
-const phone = ref('');
-const code = ref('');
-const teamInvite = ref('');
+const username = ref('');
+const password = ref('');
 const loading = ref(false);
 const showServiceModal = ref(false);
 const showPrivacyModal = ref(false);
-const countdown = ref(0);
-
-const codeButtonText = computed(() => {
-  if (countdown.value > 0) {
-    return `${countdown.value}s 后重发`;
-  }
-  return '获取验证码';
-});
-
-const sendCode = () => {
-  if (!phone.value) {
-    alert('请输入手机号');
-    return;
-  }
-  if (!/^1\d{10}$/.test(phone.value)) {
-    alert('请输入正确的手机号');
-    return;
-  }
-
-  // TODO: Call API to send code
-  alert('验证码已发送（模拟）');
-  countdown.value = 60;
-  const timer = setInterval(() => {
-    countdown.value--;
-    if (countdown.value <= 0) {
-      clearInterval(timer);
-    }
-  }, 1000);
-};
 
 const handleLogin = async () => {
-  if (!phone.value || !code.value) {
-    alert('请输入手机号和验证码');
-    return;
-  }
-
-  if (!/^1\d{10}$/.test(phone.value)) {
-    alert('请输入正确的手机号');
+  if (!username.value || !password.value) {
+    alert('请输入账号和密码');
     return;
   }
 
@@ -181,9 +117,8 @@ const handleLogin = async () => {
 
   try {
     const data = await login({
-      phone: phone.value,
-      code: code.value,
-      invite_code: loginMode.value === 'team' ? teamInvite.value : undefined,
+      username: username.value.trim(),
+      password: password.value,
     });
     sessionStorage.setItem('authenticated', 'true');
     sessionStorage.setItem('session_token', data.session_token);
@@ -191,8 +126,10 @@ const handleLogin = async () => {
     sessionStorage.setItem('user', JSON.stringify(data.user));
     sessionStorage.setItem('sessionToken', data.session_token);
     sessionStorage.setItem('refreshToken', data.refresh_token);
-    sessionStorage.setItem('userType', data.user.user_type);
+    sessionStorage.setItem('userType', data.user.account_type);
     sessionStorage.setItem('currentSpace', data.current_space?.space_name || '');
+    sessionStorage.setItem('llmConfigured', data.user.llm_configured ? 'true' : 'false');
+    sessionStorage.setItem('llmApiBase', data.user.llm_api_base || '');
 
     const redirect = router.currentRoute.value.query.redirect;
     if (typeof redirect === 'string' && redirect.length > 0) {
@@ -465,6 +402,17 @@ input:focus {
 }
 
 .agreement a {
+  color: var(--md-primary);
+  text-decoration: underline;
+}
+
+.admin-link {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.admin-link a {
   color: var(--md-primary);
   text-decoration: underline;
 }

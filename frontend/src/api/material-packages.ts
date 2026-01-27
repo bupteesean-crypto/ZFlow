@@ -23,6 +23,29 @@ export type MaterialPackageListResponse = {
   total: number;
 };
 
+export type MaterialPackageCreateResponse = {
+  package_id: string;
+  status: string;
+};
+
+export async function createMaterialPackage(payload: {
+  project_id: string;
+  prompt: string;
+  mode?: string;
+  documents?: Record<string, unknown>[];
+  input_config?: Record<string, unknown>;
+  image_model_id?: string;
+}): Promise<MaterialPackageCreateResponse> {
+  const { data } = await request.post<ApiResponse<MaterialPackageCreateResponse>>(
+    `/material-packages`,
+    payload
+  );
+  if (data.code !== 0) {
+    throw new Error(data.message || 'Failed to create material package');
+  }
+  return data.data;
+}
+
 export async function fetchMaterialPackages(projectId: string): Promise<MaterialPackageListResponse> {
   const { data } = await request.get<ApiResponse<MaterialPackageListResponse>>(
     `/projects/${projectId}/material-packages`

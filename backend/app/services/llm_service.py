@@ -1,13 +1,15 @@
 import json
 import logging
+import time
 from pathlib import Path
+from typing import Callable
 from urllib import error, request
 
 from app.core.config import normalize_provider, settings
 
 logger = logging.getLogger(__name__)
 
-GLM_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+GLM_ENDPOINT_PATH = "/api/paas/v4/chat/completions"
 PROMPT_PATH = (
     Path(__file__).resolve().parents[1]
     / "prompts"
@@ -640,8 +642,33 @@ STORYBOARD_PROMPT = _load_stage_prompt(STORYBOARD_PROMPT_PATH, DEFAULT_STORYBOAR
 
 
 class LLMService:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        allow_env_fallback: bool = True,
+    ) -> None:
         self._provider = settings.llm_provider
+        self._last_error: str | None = None
+        self._api_key = api_key.strip() if isinstance(api_key, str) and api_key.strip() else None
+        self._api_base = api_base.strip().rstrip("/") if isinstance(api_base, str) and api_base.strip() else None
+        self._allow_env_fallback = allow_env_fallback
+
+    def _resolve_glm_api_key(self) -> str:
+        if self._api_key:
+            return self._api_key
+        if self._allow_env_fallback:
+            return settings.glm_api_key
+        return ""
+
+    def _resolve_glm_endpoint(self) -> str:
+        base = self._api_base or settings.glm_api_base or "https://open.bigmodel.cn"
+        base = base.strip().rstrip("/")
+        if base.endswith("/chat/completions"):
+            return base
+        if base.endswith("/api/paas/v4"):
+            return f"{base}/chat/completions"
+        return f"{base}{GLM_ENDPOINT_PATH}"
 
     def generate(self, prompt: str) -> dict:
         provider = normalize_provider(self._provider)
@@ -677,6 +704,7 @@ class LLMService:
         input_config: dict | None = None,
         feedback: str | None = None,
         previous_summary: str | None = None,
+        on_delta: Callable[[str, str], None] | None = None,
     ) -> tuple[str, list[str]]:
         provider = normalize_provider(self._provider)
         if provider != "glm":
@@ -691,7 +719,13 @@ class LLMService:
             "documents": documents or [],
             "input_config": input_config or {},
         }
-        content = self._call_glm(system_prompt, payload_context, temperature=temperature)
+        if on_delta:
+            result = self._call_glm_stream(system_prompt, payload_context, temperature=temperature, on_delta=on_delta)
+            content = result.get("content") or ""
+        else:
+            content = self._call_glm(system_prompt, payload_context, temperature=temperature)
+        if not content and self._last_error == "rate_limited":
+            raise RuntimeError("LLM rate limited")
         parsed = self._parse_json_dict(content)
         summary = _normalize_text(parsed.get("summary"), "")
         keywords = _normalize_keywords(parsed.get("keywords"))
@@ -709,6 +743,7 @@ class LLMService:
         input_config: dict | None = None,
         feedback: str | None = None,
         previous_art_style: dict | None = None,
+        on_delta: Callable[[str, str], None] | None = None,
     ) -> dict:
         provider = normalize_provider(self._provider)
         if provider != "glm":
@@ -724,7 +759,13 @@ class LLMService:
             "documents": documents or [],
             "input_config": input_config or {},
         }
-        content = self._call_glm(system_prompt, payload_context, temperature=temperature)
+        if on_delta:
+            result = self._call_glm_stream(system_prompt, payload_context, temperature=temperature, on_delta=on_delta)
+            content = result.get("content") or ""
+        else:
+            content = self._call_glm(system_prompt, payload_context, temperature=temperature)
+        if not content and self._last_error == "rate_limited":
+            raise RuntimeError("LLM rate limited")
         parsed = self._parse_json_dict(content)
         art_style = parsed.get("art_style") if isinstance(parsed.get("art_style"), dict) else parsed
         normalized = _normalize_art_style(art_style)
@@ -745,6 +786,7 @@ class LLMService:
         input_config: dict | None = None,
         feedback: str | None = None,
         previous_subjects: list | None = None,
+        on_delta: Callable[[str, str], None] | None = None,
     ) -> list[dict]:
         provider = normalize_provider(self._provider)
         if provider != "glm":
@@ -761,7 +803,13 @@ class LLMService:
             "documents": documents or [],
             "input_config": input_config or {},
         }
-        content = self._call_glm(system_prompt, payload_context, temperature=temperature)
+        if on_delta:
+            result = self._call_glm_stream(system_prompt, payload_context, temperature=temperature, on_delta=on_delta)
+            content = result.get("content") or ""
+        else:
+            content = self._call_glm(system_prompt, payload_context, temperature=temperature)
+        if not content and self._last_error == "rate_limited":
+            raise RuntimeError("LLM rate limited")
         parsed = self._parse_json_dict(content)
         subjects = parsed.get("subjects") if isinstance(parsed.get("subjects"), list) else parsed
         normalized = _normalize_subjects(subjects, summary)
@@ -781,6 +829,7 @@ class LLMService:
         input_config: dict | None = None,
         feedback: str | None = None,
         previous_scenes: list | None = None,
+        on_delta: Callable[[str, str], None] | None = None,
     ) -> list[dict]:
         provider = normalize_provider(self._provider)
         if provider != "glm":
@@ -798,7 +847,13 @@ class LLMService:
             "documents": documents or [],
             "input_config": input_config or {},
         }
-        content = self._call_glm(system_prompt, payload_context, temperature=temperature)
+        if on_delta:
+            result = self._call_glm_stream(system_prompt, payload_context, temperature=temperature, on_delta=on_delta)
+            content = result.get("content") or ""
+        else:
+            content = self._call_glm(system_prompt, payload_context, temperature=temperature)
+        if not content and self._last_error == "rate_limited":
+            raise RuntimeError("LLM rate limited")
         parsed = self._parse_json_dict(content)
         scenes = parsed.get("scenes") if isinstance(parsed.get("scenes"), list) else parsed
         normalized = _normalize_scenes(scenes, summary)
@@ -819,6 +874,7 @@ class LLMService:
         input_config: dict | None = None,
         feedback: str | None = None,
         previous_storyboard: list | None = None,
+        on_delta: Callable[[str, str], None] | None = None,
     ) -> list[dict]:
         provider = normalize_provider(self._provider)
         if provider != "glm":
@@ -837,7 +893,13 @@ class LLMService:
             "documents": documents or [],
             "input_config": input_config or {},
         }
-        content = self._call_glm(system_prompt, payload_context, temperature=temperature)
+        if on_delta:
+            result = self._call_glm_stream(system_prompt, payload_context, temperature=temperature, on_delta=on_delta)
+            content = result.get("content") or ""
+        else:
+            content = self._call_glm(system_prompt, payload_context, temperature=temperature)
+        if not content and self._last_error == "rate_limited":
+            raise RuntimeError("LLM rate limited")
         parsed = self._parse_json_dict(content)
         storyboard = parsed.get("storyboard") if isinstance(parsed.get("storyboard"), list) else parsed
         normalized = _normalize_storyboard(storyboard, summary)
@@ -926,6 +988,28 @@ class LLMService:
             "storyboard": storyboard,
         }
 
+    def stream_material_package(
+        self,
+        prompt: str,
+        mode: str,
+        documents: list | None = None,
+        input_config: dict | None = None,
+        on_delta: Callable[[str, str], None] | None = None,
+    ) -> dict:
+        provider = normalize_provider(self._provider)
+        if provider != "glm":
+            logger.error("LLM provider is not configured for streaming generation")
+            raise RuntimeError("LLM provider not configured")
+        system_prompt, temperature = self._build_stage_prompt(SYSTEM_PROMPT, mode)
+        payload_context = {
+            "mode": _normalize_generation_mode(mode),
+            "user_prompt": (prompt or "").strip(),
+            "source_prompt": (prompt or "").strip(),
+            "documents": documents or [],
+            "input_config": input_config or {},
+        }
+        return self._call_glm_stream(system_prompt, payload_context, temperature, on_delta)
+
     def _mock_output(self, prompt: str) -> dict:
         fallback = (prompt or "").strip() or "Demo content"
         return _coerce_structured_output({}, fallback)
@@ -964,7 +1048,7 @@ class LLMService:
         return _coerce_structured_output(parsed, fallback_text)
 
     def _generate_glm(self, prompt: str) -> dict:
-        api_key = settings.glm_api_key
+        api_key = self._resolve_glm_api_key()
         model = settings.glm_model
         if not api_key or not model:
             logger.error(
@@ -983,7 +1067,7 @@ class LLMService:
         }
 
         req = request.Request(
-            GLM_ENDPOINT,
+            self._resolve_glm_endpoint(),
             data=json.dumps(payload).encode("utf-8"),
             headers={
                 "Content-Type": "application/json",
@@ -1048,7 +1132,7 @@ class LLMService:
     def _rewrite_glm(
         self, original_prompt: str, feedback: str, prompt_parts: dict | None
     ) -> str:
-        api_key = settings.glm_api_key
+        api_key = self._resolve_glm_api_key()
         model = settings.glm_model
         if not api_key or not model:
             logger.error(
@@ -1068,7 +1152,7 @@ class LLMService:
             }
 
         req = request.Request(
-            GLM_ENDPOINT,
+            self._resolve_glm_endpoint(),
             data=json.dumps(
                 {
                     "model": model,
@@ -1192,7 +1276,7 @@ class LLMService:
         return f"{base}\n\nUser feedback: {note}"
 
     def _rewrite_art_style_glm(self, current_style: dict, feedback: str) -> dict:
-        api_key = settings.glm_api_key
+        api_key = self._resolve_glm_api_key()
         model = settings.glm_model
         if not api_key or not model:
             logger.error(
@@ -1218,7 +1302,7 @@ class LLMService:
         return rewritten
 
     def _rewrite_storyboard_glm(self, current_description: str, feedback: str) -> str:
-        api_key = settings.glm_api_key
+        api_key = self._resolve_glm_api_key()
         model = settings.glm_model
         if not api_key or not model:
             logger.error(
@@ -1240,7 +1324,7 @@ class LLMService:
         )
 
     def _rewrite_summary_glm(self, current_summary: str, feedback: str) -> str:
-        api_key = settings.glm_api_key
+        api_key = self._resolve_glm_api_key()
         model = settings.glm_model
         if not api_key or not model:
             logger.error(
@@ -1260,7 +1344,7 @@ class LLMService:
         return summary or self._mock_rewrite_summary(current_summary, feedback)
 
     def _rewrite_subject_glm(self, current_subject: dict, feedback: str) -> dict:
-        api_key = settings.glm_api_key
+        api_key = self._resolve_glm_api_key()
         model = settings.glm_model
         if not api_key or not model:
             logger.error(
@@ -1282,7 +1366,7 @@ class LLMService:
         return rewritten
 
     def _rewrite_scene_glm(self, current_scene: dict, feedback: str) -> dict:
-        api_key = settings.glm_api_key
+        api_key = self._resolve_glm_api_key()
         model = settings.glm_model
         if not api_key or not model:
             logger.error(
@@ -1306,10 +1390,11 @@ class LLMService:
     def _call_glm(
         self, system_prompt: str, payload_context: dict, temperature: float = 0.4
     ) -> str:
-        api_key = settings.glm_api_key
+        api_key = self._resolve_glm_api_key()
         model = settings.glm_model
         if not api_key or not model:
             return ""
+        self._last_error = None
         logger.info(
             "llm.request provider=glm model=%s temperature=%.2f payload_keys=%s",
             model,
@@ -1318,7 +1403,7 @@ class LLMService:
         )
 
         req = request.Request(
-            GLM_ENDPOINT,
+            self._resolve_glm_endpoint(),
             data=json.dumps(
                 {
                     "model": model,
@@ -1339,26 +1424,156 @@ class LLMService:
             method="POST",
         )
 
-        try:
-            with request.urlopen(req, timeout=180) as response:
-                response_text = response.read().decode("utf-8")
-        except error.HTTPError as exc:
-            logger.error("GLM API error: status=%s reason=%s", exc.code, exc.reason)
-            return ""
-        except Exception:
-            logger.exception("GLM API request failed")
-            return ""
+        max_attempts = 5
+        backoff_base = 2.0
+        response_text = ""
+        for attempt in range(max_attempts):
+            try:
+                with request.urlopen(req, timeout=180) as response:
+                    response_text = response.read().decode("utf-8")
+                break
+            except error.HTTPError as exc:
+                logger.error("GLM API error: status=%s reason=%s", exc.code, exc.reason)
+                if exc.code == 429:
+                    self._last_error = "rate_limited"
+                elif exc.code in {500, 502, 503, 504}:
+                    self._last_error = "upstream_error"
+                should_retry = exc.code in {429, 500, 502, 503, 504} and attempt < max_attempts - 1
+                if should_retry:
+                    retry_after = None
+                    try:
+                        retry_after = exc.headers.get("Retry-After")
+                    except Exception:
+                        retry_after = None
+                    delay = None
+                    if isinstance(retry_after, str) and retry_after.strip():
+                        try:
+                            delay = float(retry_after.strip())
+                        except ValueError:
+                            delay = None
+                    if delay is None:
+                        delay = backoff_base * (2**attempt)
+                    logger.warning("GLM request retrying in %.1fs (attempt %s/%s)", delay, attempt + 1, max_attempts)
+                    time.sleep(delay)
+                    continue
+                return ""
+            except Exception:
+                logger.exception("GLM API request failed")
+                self._last_error = "request_failed"
+                if attempt < max_attempts - 1:
+                    delay = backoff_base * (2**attempt)
+                    logger.warning("GLM request retrying in %.1fs (attempt %s/%s)", delay, attempt + 1, max_attempts)
+                    time.sleep(delay)
+                    continue
+                return ""
 
         try:
             data = json.loads(response_text)
         except json.JSONDecodeError:
             logger.error("GLM API response was not valid JSON")
+            self._last_error = "invalid_response"
             return ""
 
         choices = data.get("choices") or []
         message = choices[0].get("message", {}) if choices else {}
         content = message.get("content") if isinstance(message, dict) else None
         return (content or "").strip()
+
+    def _call_glm_stream(
+        self,
+        system_prompt: str,
+        payload_context: dict,
+        temperature: float,
+        on_delta: Callable[[str, str], None] | None,
+    ) -> dict:
+        api_key = self._resolve_glm_api_key()
+        model = settings.glm_model
+        if not api_key or not model:
+            return {"content": "", "finish_reason": None, "usage": None, "done": False}
+        self._last_error = None
+        logger.info(
+            "llm.request provider=glm model=%s temperature=%.2f payload_keys=%s stream=true",
+            model,
+            temperature,
+            ",".join(sorted(payload_context.keys())),
+        )
+
+        req = request.Request(
+            self._resolve_glm_endpoint(),
+            data=json.dumps(
+                {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {
+                            "role": "user",
+                            "content": json.dumps(payload_context, ensure_ascii=False),
+                        },
+                    ],
+                    "temperature": temperature,
+                    "stream": True,
+                }
+            ).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            method="POST",
+        )
+
+        content_parts: list[str] = []
+        finish_reason = None
+        usage = None
+        saw_done = False
+
+        try:
+            with request.urlopen(req, timeout=180) as response:
+                for raw_line in response:
+                    if not raw_line:
+                        continue
+                    line = raw_line.decode("utf-8").strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[len("data:") :].strip()
+                    if data == "[DONE]":
+                        saw_done = True
+                        break
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    choices = chunk.get("choices") or []
+                    choice = choices[0] if choices else {}
+                    delta = choice.get("delta") if isinstance(choice, dict) else {}
+                    delta_content = delta.get("content") if isinstance(delta, dict) else ""
+                    delta_reasoning = delta.get("reasoning_content") if isinstance(delta, dict) else ""
+                    if delta_content:
+                        content_parts.append(delta_content)
+                    if on_delta and (delta_content or delta_reasoning):
+                        try:
+                            on_delta(delta_content or "", delta_reasoning or "")
+                        except Exception:
+                            logger.exception("LLM stream delta callback failed")
+                    if choice.get("finish_reason"):
+                        finish_reason = choice.get("finish_reason")
+                    if chunk.get("usage"):
+                        usage = chunk.get("usage")
+        except error.HTTPError as exc:
+            logger.error("GLM API error: status=%s reason=%s", exc.code, exc.reason)
+            if exc.code == 429:
+                self._last_error = "rate_limited"
+            elif exc.code in {500, 502, 503, 504}:
+                self._last_error = "upstream_error"
+        except Exception:
+            logger.exception("GLM API stream request failed")
+            self._last_error = "request_failed"
+
+        return {
+            "content": "".join(content_parts),
+            "finish_reason": finish_reason,
+            "usage": usage,
+            "done": saw_done,
+        }
 
     def rewrite_blueprint(
         self, previous_blueprint: dict, feedback: str, source_prompt: str
@@ -1375,6 +1590,8 @@ class LLMService:
         content = self._call_glm(
             BLUEPRINT_REWRITE_PROMPT, payload_context, temperature=0.5
         )
+        if not content and self._last_error == "rate_limited":
+            raise RuntimeError("LLM rate limited")
         parsed = self._parse_json_dict(content)
         normalized = _normalize_material_package_struct(parsed)
         valid, reason = _validate_material_package_struct(normalized)
@@ -1393,6 +1610,8 @@ class LLMService:
             "art_style": _normalize_art_style(art_style or {}),
         }
         content = self._call_glm(PACKAGE_NAME_PROMPT, payload_context, temperature=0.4)
+        if not content and self._last_error == "rate_limited":
+            raise RuntimeError("LLM rate limited")
         parsed = self._parse_json_dict(content)
         name = _normalize_text(parsed.get("name"), "")
         if not name:

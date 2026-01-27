@@ -41,11 +41,11 @@
         <div class="chat-input">
           <textarea
             v-model="chatInput"
-            placeholder="对当前素材包的修改意见，例如：更温暖的色调 / 场景更细腻"
+            placeholder="修改意见"
             @keydown="handleChatKeydown"
           />
           <div class="chat-actions">
-            <select v-model="selectedImageModelId" class="model-select" :disabled="isStreaming">
+            <select v-model="selectedImageModelId" class="model-select" :disabled="isAnyStreaming">
               <option v-for="model in imageModels" :key="model.id" :value="model.id" :disabled="!model.enabled">
                 {{ model.label }}{{ model.enabled ? '' : '（未启用）' }}
               </option>
@@ -86,26 +86,31 @@
           </div>
 
           <div v-if="streamPackageName" class="stream-title">素材包名称：{{ streamPackageName }}</div>
+          <div v-if="isPackageStreaming" class="streaming-block">
+            <div class="streaming-title">素材包文本生成中</div>
+            <div class="streaming-text">正在生成结构化内容，请稍候…</div>
+          </div>
 
           <!-- Story Summary Section -->
           <section
             :class="['section', { selected: selectedTextTarget?.type === 'summary' }]"
-            @click="selectTextTarget({ type: 'summary' }, '故事摘要', displaySummary)"
+            @click="selectTextTarget({ type: 'summary' }, '故事梗概', displaySummary)"
           >
             <h3>
-              故事摘要
+              故事梗概
               <span v-if="isSummaryAdopted" class="adopted-badge">已采用</span>
             </h3>
+            <div v-if="draftSummary" class="stream-draft">{{ draftSummary }}</div>
             <div class="asset-preview">{{ displaySummary || '生成中…' }}</div>
           </section>
 
           <!-- Art Style Section -->
           <section
             :class="['section', { selected: selectedTextTarget?.type === 'art_style' }]"
-            @click="selectTextTarget({ type: 'art_style' }, '美术风格', buildArtStyleContent(artStyleDisplayValue))"
+            @click="selectTextTarget({ type: 'art_style' }, '视觉风格', buildArtStyleContent(artStyleDisplayValue))"
           >
             <h3>
-              美术风格
+              视觉风格
               <span v-if="isArtStyleAdopted" class="adopted-badge">已采用</span>
             </h3>
             <div v-if="artStyleVersions.length > 1" class="version-switch">
@@ -127,6 +132,7 @@
               </button>
             </div>
             <div class="asset-preview">
+              <div v-if="draftArtStyle" class="stream-draft">{{ draftArtStyle }}</div>
               <div class="detail-row">风格：{{ artStyleDisplayValue.styleName || '生成中…' }}</div>
               <div class="detail-row" v-if="artStyleDisplayValue.palette.length">
                 调色盘：{{ artStyleDisplayValue.palette.join(' / ') }}
@@ -139,9 +145,14 @@
 
           <!-- Subjects Section -->
           <section class="section">
-            <h3>角色列表</h3>
+            <h3>角色设定</h3>
             <div v-if="displaySubjects.length === 0" class="empty-text">
-              {{ isStreaming ? '生成中…' : '暂无角色' }}
+              <template v-if="draftCharacters">
+                <pre class="stream-draft">{{ draftCharacters }}</pre>
+              </template>
+              <template v-else>
+                {{ isAnyStreaming ? '生成中…' : '暂无角色' }}
+              </template>
             </div>
             <div
               v-for="subject in displaySubjects"
@@ -183,9 +194,14 @@
 
           <!-- Scenes Section -->
           <section class="section">
-            <h3>场景列表</h3>
+            <h3>场景设定</h3>
             <div v-if="displayScenes.length === 0" class="empty-text">
-              {{ isStreaming ? '生成中…' : '暂无场景' }}
+              <template v-if="draftScenes">
+                <pre class="stream-draft">{{ draftScenes }}</pre>
+              </template>
+              <template v-else>
+                {{ isAnyStreaming ? '生成中…' : '暂无场景' }}
+              </template>
             </div>
             <div
               v-for="scene in displayScenes"
@@ -224,9 +240,14 @@
 
           <!-- Storyboard Section -->
           <section class="section">
-            <h3>分镜剧本</h3>
+            <h3>分镜脚本</h3>
             <div v-if="displayStoryboard.length === 0" class="empty-text">
-              {{ isStreaming ? '生成中…' : '暂无分镜' }}
+              <template v-if="draftStoryboard">
+                <pre class="stream-draft">{{ draftStoryboard }}</pre>
+              </template>
+              <template v-else>
+                {{ isAnyStreaming ? '生成中…' : '暂无分镜' }}
+              </template>
             </div>
             <ol v-else class="storyboard-list">
               <li
@@ -320,7 +341,7 @@
               <textarea v-model="feedbackInput" placeholder="例如：更柔和的光线 / 换成夜景 / 增加环境细节" />
               <button class="link-btn mt-2" :disabled="isImageBusy" @click="submitFeedback">提交修改意见</button>
               <div v-if="isRegenerating" class="status-hint">图片生成中…</div>
-              <div v-if="isPropagating" class="status-hint">正在应用美术风格传播…</div>
+              <div v-if="isPropagating" class="status-hint">正在应用视觉风格传播…</div>
               <div class="text-11 text-slate-500 mt-2">提示：提交后会生成新的候选版本并存。</div>
             </div>
             <div v-else-if="isTextSelected">
@@ -643,11 +664,17 @@ const currentObject = ref<CurrentObject>({
 });
 const dialogListRef = ref<HTMLDivElement | null>(null);
 const streamSource = ref<EventSource | null>(null);
+const packageStreamSource = ref<EventSource | null>(null);
 const streamDone = ref(false);
 const streamWarningShown = ref(false);
 const isStreaming = ref(false);
 const isStreamingImages = ref(false);
+const isPackageStreaming = ref(false);
+const packageStreamDone = ref(false);
+const packageStreamText = ref('');
+const packageStreamPackageId = ref('');
 const streamContent = ref<StreamContent>({});
+const streamDrafts = ref<Record<string, string>>({});
 const fallbackPollingId = ref<number | null>(null);
 const streamWatchdogId = ref<number | null>(null);
 const imageRefreshTimer = ref<number | null>(null);
@@ -671,6 +698,7 @@ const isTextGenerating = ref(false);
 const isPropagating = ref(false);
 const isImageBusy = computed(() => isRegenerating.value || isImageAdopting.value || isPropagating.value);
 const isTextBusy = computed(() => isTextAdopting.value || isTextGenerating.value || isPropagating.value);
+const isAnyStreaming = computed(() => isStreaming.value || isPackageStreaming.value);
 const previewImage = ref<GeneratedImage | null>(null);
 const pendingImageGroups = ref<string[]>([]);
 const artStylePreviewId = ref<string>('');
@@ -1145,7 +1173,7 @@ const propagateArtStyleToImages = async (artStyle: ArtStyleDisplay) => {
       }
     }
   } catch (err) {
-    alert(err instanceof Error ? err.message : '美术风格传播失败');
+    alert(err instanceof Error ? err.message : '视觉风格传播失败');
   } finally {
     isPropagating.value = false;
     pendingImageGroups.value = [];
@@ -1159,7 +1187,7 @@ const confirmArtStylePropagation = async () => {
   const pkg = currentPackage.value;
   if (!pkg) return;
   if (isPropagating.value) return;
-  const confirmed = window.confirm('是否基于当前美术风格，重新生成相关图片？');
+  const confirmed = window.confirm('是否基于当前视觉风格，重新生成相关图片？');
   if (!confirmed) return;
   await propagateArtStyleToImages(pkg.artStyle);
 };
@@ -1176,7 +1204,7 @@ const adoptArtStylePreview = async () => {
     await loadPackages();
     await confirmArtStylePropagation();
   } catch (err) {
-    alert(err instanceof Error ? err.message : '采用美术风格失败');
+    alert(err instanceof Error ? err.message : '采用视觉风格失败');
   } finally {
     isTextAdopting.value = false;
   }
@@ -1602,14 +1630,33 @@ const resetStreamMessages = () => {
   streamMessages.value = [];
   streamTodoItems.value = [];
   streamContent.value = {};
+  streamDrafts.value = {};
   isStreaming.value = false;
   isStreamingImages.value = false;
   stopImageRefreshTimer();
 };
 
+const appendStreamDraft = (section: string, delta: string) => {
+  if (!delta) return;
+  const next = (streamDrafts.value[section] || '') + delta;
+  streamDrafts.value = { ...streamDrafts.value, [section]: next };
+};
+
+const clearStreamDraft = (section: string) => {
+  if (!streamDrafts.value[section]) return;
+  const { [section]: _removed, ...rest } = streamDrafts.value;
+  streamDrafts.value = rest;
+};
+
 const applyContentUpdate = (section: string, data: any) => {
+  if (data && typeof data === 'object' && typeof data.delta === 'string') {
+    appendStreamDraft(section, data.delta);
+    return;
+  }
   if (section === 'summary') {
-    streamContent.value.summary = typeof data === 'string' ? data : '';
+    const text = typeof data === 'string' ? data : '';
+    streamContent.value.summary = text;
+    clearStreamDraft(section);
     return;
   }
   if (section === 'package_name') {
@@ -1625,6 +1672,7 @@ const applyContentUpdate = (section: string, data: any) => {
       stylePrompt: typeof data.style_prompt === 'string' ? data.style_prompt : (data.stylePrompt || ''),
       palette,
     };
+    clearStreamDraft(section);
     return;
   }
   if (section === 'characters' && Array.isArray(data)) {
@@ -1640,6 +1688,7 @@ const applyContentUpdate = (section: string, data: any) => {
       viewLabel: '三视图',
       images: [],
     }));
+    clearStreamDraft(section);
     return;
   }
   if (section === 'scenes' && Array.isArray(data)) {
@@ -1651,6 +1700,7 @@ const applyContentUpdate = (section: string, data: any) => {
       purpose: typeof item.purpose === 'string' ? item.purpose : '',
       images: [],
     }));
+    clearStreamDraft(section);
     return;
   }
   if (section === 'storyboard' && Array.isArray(data)) {
@@ -1672,6 +1722,7 @@ const applyContentUpdate = (section: string, data: any) => {
         camera: typeof item.camera === 'string' ? item.camera : '',
       };
     });
+    clearStreamDraft(section);
   }
 };
 
@@ -1702,7 +1753,7 @@ const pushStreamWarning = (message: string) => {
 
 const stepLabels: Record<string, string> = {
   summary: '故事梗概',
-  art_style: '美术风格',
+  art_style: '视觉风格',
   characters: '角色设定',
   scenes: '场景设定',
   storyboard: '分镜脚本',
@@ -1762,6 +1813,18 @@ const pushAssistantMessage = (content: string) => {
     role: 'system',
     status: 'completed',
     kind: 'text',
+  });
+};
+
+const pushStatusMessage = (content: string, status: ConversationMessage['status'], step?: string) => {
+  streamMessages.value.push({
+    id: `stream-status-${Date.now()}`,
+    text: content,
+    createdAt: Date.now(),
+    role: 'system',
+    status: status || 'completed',
+    kind: 'text',
+    step,
   });
 };
 
@@ -1850,6 +1913,140 @@ const closeGenerationStream = () => {
   stopImageRefreshTimer();
 };
 
+const closePackageStream = () => {
+  if (packageStreamSource.value) {
+    packageStreamSource.value.close();
+    packageStreamSource.value = null;
+  }
+};
+
+const parsePackageEvent = (event: MessageEvent) => {
+  if (!event.data) return null;
+  try {
+    return JSON.parse(event.data);
+  } catch (err) {
+    return null;
+  }
+};
+
+const openPackageStream = (packageId: string, prompt?: string, startedAt?: number) => {
+  if (!packageId) return;
+  closeGenerationStream();
+  closePackageStream();
+  resetStreamMessages();
+  packageStreamText.value = '';
+  packageStreamDone.value = false;
+  isPackageStreaming.value = true;
+  isStreamingImages.value = false;
+  packageStreamPackageId.value = packageId;
+  currentPackageId.value = packageId;
+  if (prompt) {
+    addPendingUserMessage(prompt, startedAt || Date.now());
+  }
+  const baseUrl = request.defaults.baseURL || '';
+  const token = sessionStorage.getItem('session_token') || sessionStorage.getItem('sessionToken') || '';
+  const streamUrl = `${baseUrl}/material-packages/${packageId}/events?session_token=${encodeURIComponent(token)}`;
+  const source = new EventSource(streamUrl);
+  packageStreamSource.value = source;
+
+  source.addEventListener('phase.started', event => {
+    const payload = parsePackageEvent(event);
+    if (!payload) return;
+    const phase = payload.payload?.phase;
+    if (phase === 'text') {
+      pushAssistantMessage('正在生成文本内容…');
+    }
+  });
+
+  source.addEventListener('phase.delta', event => {
+    const payload = parsePackageEvent(event);
+    if (!payload) return;
+    const delta = payload.payload?.delta;
+    if (typeof delta === 'string' && delta) {
+      packageStreamText.value += delta;
+    }
+  });
+
+  source.addEventListener('phase.done', event => {
+    const payload = parsePackageEvent(event);
+    if (!payload) return;
+    const phase = payload.payload?.phase;
+    if (phase === 'text') {
+      pushAssistantMessage('文本生成完成，正在整理素材包…');
+      isStreamingImages.value = true;
+      loadPackages()
+        .then(() => {
+          if (packageId && assetPackages.value[packageId]) {
+            currentPackageId.value = packageId;
+          }
+        })
+        .catch(() => null);
+    }
+  });
+
+  source.addEventListener('image.generated', () => {
+    isStreamingImages.value = true;
+    scheduleImageRefresh();
+  });
+
+  source.addEventListener('image.error', event => {
+    const payload = parsePackageEvent(event);
+    if (!payload) return;
+    const message = payload.payload?.message || '图片生成遇到问题';
+    pushStreamWarning(String(message));
+  });
+
+  source.addEventListener('progress', event => {
+    const payload = parsePackageEvent(event);
+    if (!payload) return;
+    const message = payload.payload?.message;
+    if (typeof message === 'string' && message.trim()) {
+      pushAssistantMessage(message.trim());
+    }
+  });
+
+  source.addEventListener('error', event => {
+    const payload = parsePackageEvent(event);
+    if (!payload) return;
+    const message = payload.payload?.message || '生成失败';
+    pushStreamWarning(String(message));
+    isPackageStreaming.value = false;
+    isStreamingImages.value = false;
+    packageStreamDone.value = true;
+    closePackageStream();
+    sessionStorage.removeItem('streamPackageId');
+    sessionStorage.removeItem('streamPackagePrompt');
+    sessionStorage.removeItem('streamPackageStartedAt');
+  });
+
+  source.addEventListener('done', event => {
+    const payload = parsePackageEvent(event);
+    if (!payload) return;
+    packageStreamDone.value = true;
+    isPackageStreaming.value = false;
+    isStreamingImages.value = false;
+    closePackageStream();
+    sessionStorage.removeItem('streamPackageId');
+    sessionStorage.removeItem('streamPackagePrompt');
+    sessionStorage.removeItem('streamPackageStartedAt');
+    loadPackages()
+      .then(() => {
+        if (packageId && assetPackages.value[packageId]) {
+          currentPackageId.value = packageId;
+        }
+        streamContent.value = {};
+      })
+      .catch(() => null);
+    packageStreamText.value = '';
+  });
+
+  source.onerror = () => {
+    if (!packageStreamDone.value) {
+      pushStreamWarning('正在生成中，如未自动更新，你可以稍后查看结果');
+    }
+  };
+};
+
 const openGenerationStream = (
   projectId: string,
   context?: { type: 'start' | 'feedback'; input: string; packageId?: string }
@@ -1873,7 +2070,8 @@ const openGenerationStream = (
     };
   }
   const baseUrl = request.defaults.baseURL || '';
-  const streamUrl = `${baseUrl}/generation/stream/${projectId}`;
+  const token = sessionStorage.getItem('session_token') || sessionStorage.getItem('sessionToken') || '';
+  const streamUrl = `${baseUrl}/generation/stream/${projectId}?session_token=${encodeURIComponent(token)}`;
   const source = new EventSource(streamUrl);
   streamSource.value = source;
   startStreamWatchdog();
@@ -1913,8 +2111,13 @@ const openGenerationStream = (
     }
     if (payload?.type === 'text.done') {
       isStreamingImages.value = true;
-      loadPackages().catch(() => null);
-      streamContent.value = {};
+      pushStatusMessage('文本已生成，正在生成图片…', 'loading');
+      loadPackages()
+        .then(() => {
+          streamContent.value = {};
+          streamDrafts.value = {};
+        })
+        .catch(() => null);
       return;
     }
     if (payload?.type === 'image.generated') {
@@ -1933,6 +2136,7 @@ const openGenerationStream = (
       isStreamingImages.value = false;
       stopFallbackPolling();
       closeGenerationStream();
+      pushStatusMessage('素材包已生成完成', 'completed', 'done');
       sessionStorage.removeItem('streamProjectId');
       sessionStorage.removeItem('streamPrompt');
       sessionStorage.removeItem('streamStartedAt');
@@ -1941,10 +2145,13 @@ const openGenerationStream = (
       sessionStorage.removeItem('streamFeedbackPackageId');
       loadPackages().catch(() => null);
       streamContent.value = {};
+      streamDrafts.value = {};
       return;
     }
     if (payload?.type === 'generation.error') {
-      const errorText = formatErrorMessage(payload.step);
+      const stepText = formatErrorMessage(payload.step);
+      const extraMessage = typeof payload.message === 'string' && payload.message.trim() ? payload.message.trim() : '';
+      const errorText = extraMessage ? `${stepText}：${extraMessage}` : stepText;
       pushStreamError(errorText, payload.step);
       stopFallbackPolling();
       isStreaming.value = false;
@@ -2046,8 +2253,9 @@ const currentPackage = computed(() => {
 
 const hasWorkspace = computed(() => {
   if (currentPackage.value) return true;
-  if (isStreaming.value) return true;
-  return Object.keys(streamContent.value).length > 0;
+  if (isAnyStreaming.value) return true;
+  if (Object.keys(streamContent.value).length > 0) return true;
+  return packageStreamText.value.length > 0;
 });
 
 const streamPackageName = computed(() => streamContent.value.packageName || '');
@@ -2055,19 +2263,19 @@ const displaySummary = computed(() => {
   if (streamContent.value.summary) {
     return streamContent.value.summary;
   }
-  if (isStreaming.value && !isStreamingImages.value) {
+  if (isAnyStreaming.value && !isStreamingImages.value) {
     return '生成中…';
   }
   if (currentPackage.value?.storySummary) {
     return currentPackage.value.storySummary;
   }
-  return isStreaming.value ? '生成中…' : '生成中…';
+  return isAnyStreaming.value ? '生成中…' : '生成中…';
 });
 const displayArtStyle = computed<ArtStyleDisplay>(() => {
   if (streamContent.value.artStyle) {
     return streamContent.value.artStyle;
   }
-  if (isStreaming.value && !isStreamingImages.value) {
+  if (isAnyStreaming.value && !isStreamingImages.value) {
     return { styleName: '生成中…', stylePrompt: '', palette: [] };
   }
   if (currentPackage.value?.artStyle) {
@@ -2079,7 +2287,7 @@ const displaySubjects = computed(() => {
   if (streamContent.value.subjects) {
     return streamContent.value.subjects;
   }
-  if (isStreaming.value && !isStreamingImages.value) {
+  if (isAnyStreaming.value && !isStreamingImages.value) {
     return [];
   }
   if (currentPackage.value) {
@@ -2091,7 +2299,7 @@ const displayScenes = computed(() => {
   if (streamContent.value.scenes) {
     return streamContent.value.scenes;
   }
-  if (isStreaming.value && !isStreamingImages.value) {
+  if (isAnyStreaming.value && !isStreamingImages.value) {
     return [];
   }
   if (currentPackage.value) {
@@ -2103,7 +2311,7 @@ const displayStoryboard = computed(() => {
   if (streamContent.value.storyboard) {
     return streamContent.value.storyboard;
   }
-  if (isStreaming.value && !isStreamingImages.value) {
+  if (isAnyStreaming.value && !isStreamingImages.value) {
     return [];
   }
   if (currentPackage.value) {
@@ -2111,6 +2319,12 @@ const displayStoryboard = computed(() => {
   }
   return [];
 });
+
+const draftSummary = computed(() => streamDrafts.value.summary || '');
+const draftArtStyle = computed(() => streamDrafts.value.art_style || '');
+const draftCharacters = computed(() => streamDrafts.value.characters || '');
+const draftScenes = computed(() => streamDrafts.value.scenes || '');
+const draftStoryboard = computed(() => streamDrafts.value.storyboard || '');
 
 watch(
   () => currentPackage.value?.id,
@@ -2236,7 +2450,7 @@ const refreshSelectionFromPackage = () => {
   if (target.type === 'summary') {
     currentObject.value = {
       type: target.type,
-      path: '故事摘要',
+      path: '故事梗概',
       content: pkg.storySummary || '',
       kind: 'text',
     };
@@ -2289,7 +2503,7 @@ const syncSelectedArtStyle = () => {
   }
   currentObject.value = {
     type: 'art_style',
-    path: '美术风格',
+    path: '视觉风格',
     content: buildArtStyleContent(artStyleDisplayValue.value),
     kind: 'text',
   };
@@ -2534,7 +2748,10 @@ const loadPackages = async () => {
     const previousId = currentPackageId.value;
     const latest = mapped.sort((a, b) => b.createdAt - a.createdAt)[0];
     const fallbackId = latest?.id;
-    const preferred = previousId && assetPackages.value[previousId] ? previousId : fallbackId;
+    const streamPackageId = sessionStorage.getItem('streamPackageId') || packageStreamPackageId.value;
+    const preferredStreamId =
+      streamPackageId && assetPackages.value[streamPackageId] ? streamPackageId : '';
+    const preferred = preferredStreamId || (previousId && assetPackages.value[previousId] ? previousId : fallbackId);
     if (preferred) {
       currentPackageId.value = preferred;
     }
@@ -2581,6 +2798,17 @@ const maybeStartStreamFromSession = () => {
   });
 };
 
+const maybeStartPackageStreamFromSession = () => {
+  const streamPackageId = sessionStorage.getItem('streamPackageId');
+  if (!streamPackageId) {
+    return false;
+  }
+  const streamPrompt = sessionStorage.getItem('streamPackagePrompt') || '';
+  const startedAt = Number(sessionStorage.getItem('streamPackageStartedAt')) || Date.now();
+  openPackageStream(streamPackageId, streamPrompt, startedAt);
+  return true;
+};
+
 onMounted(async () => {
   const storedProjectId = sessionStorage.getItem('currentProjectId');
   if (!storedProjectId) {
@@ -2588,7 +2816,10 @@ onMounted(async () => {
     return;
   }
   currentProjectId.value = storedProjectId;
-  maybeStartStreamFromSession();
+  const startedPackageStream = maybeStartPackageStreamFromSession();
+  if (!startedPackageStream) {
+    maybeStartStreamFromSession();
+  }
   fetchModels('image')
     .then(items => {
       imageModels.value = items;
@@ -2615,6 +2846,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   closeGenerationStream();
+  closePackageStream();
   stopFallbackPolling();
 });
 </script>
@@ -3199,6 +3431,41 @@ onUnmounted(() => {
   margin-top: 8px;
   font-size: 11px;
   color: var(--md-on-surface-variant);
+}
+
+.streaming-block {
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 16px;
+  background: rgba(10, 14, 24, 0.35);
+}
+
+.streaming-title {
+  font-size: 12px;
+  color: var(--md-on-surface-variant);
+  margin-bottom: 8px;
+}
+
+.streaming-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--md-on-surface);
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.stream-draft {
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--md-on-surface-variant);
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px dashed rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  padding: 8px;
+  margin-bottom: 8px;
 }
 
 .detail-card {

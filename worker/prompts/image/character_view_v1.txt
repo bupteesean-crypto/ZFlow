@@ -1,4 +1,4 @@
-Create a clean 3:4 portrait character design sheet view for a single character.
+Create a clean 3:4 portrait character design view for a single character.
 
 Character: {{character_name}}
 Description: {{character_description}}
@@ -8,6 +8,8 @@ View: {{view}}
 
 Composition:
 - full-body view, centered
+- neutral pose, no action
+- orthographic view, no perspective distortion
 - clear silhouette and proportions
 - neutral background
 

@@ -1,10 +1,10 @@
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.events import emit_event
-from app.db.models import MaterialPackage, Project, to_project_dict, utc_now
+from app.db.models import MaterialPackage, Project, UserAccount, to_project_dict, utc_now
 from app.store import new_id
 
 
@@ -25,10 +25,16 @@ def create_project(
     name: Optional[str],
     space_type: Optional[str],
     team_space_id: Optional[str],
+    owner_user_id: Optional[str],
+    company_id: Optional[str],
+    visibility: str,
 ) -> dict:
     now = utc_now()
     project = Project(
         id=new_id(),
+        owner_user_id=owner_user_id,
+        company_id=company_id,
+        visibility=visibility,
         name=name or "Untitled Project",
         team_space_id=team_space_id,
         status="draft",
@@ -52,9 +58,43 @@ def create_project(
     return to_project_dict(project)
 
 
+def list_projects_for_user(
+    db: Session,
+    user: UserAccount,
+    page: int,
+    page_size: int,
+) -> tuple[list[dict], int]:
+    query = db.query(Project)
+    if not getattr(user, "is_platform_admin", False):
+        if getattr(user, "company_id", None):
+            query = query.filter(
+                or_(
+                    Project.owner_user_id == user.id,
+                    and_(
+                        Project.company_id == user.company_id,
+                        Project.visibility == "company",
+                    ),
+                )
+            )
+        else:
+            query = query.filter(Project.owner_user_id == user.id)
+    total = query.count()
+    items = (
+        query.order_by(Project.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return [to_project_dict(item) for item in items], total
+
+
 def get_project(db: Session, project_id: str) -> Optional[dict]:
     project = db.execute(select(Project).where(Project.id == project_id)).scalar_one_or_none()
     return to_project_dict(project) if project else None
+
+
+def get_project_model(db: Session, project_id: str) -> Optional[Project]:
+    return db.execute(select(Project).where(Project.id == project_id)).scalar_one_or_none()
 
 
 def update_project(db: Session, project_id: str, payload: dict) -> Optional[dict]:
@@ -72,6 +112,7 @@ def update_project(db: Session, project_id: str, payload: dict) -> Optional[dict
         "last_material_package_id",
         "input_config",
         "metadata",
+        "visibility",
     ]:
         if key in payload:
             if key == "metadata":

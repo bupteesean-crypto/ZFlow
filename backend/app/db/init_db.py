@@ -1,6 +1,9 @@
 # app/db/init_db.py
 
 import logging
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from app.db.base import Base
 from app.db.session import engine

@@ -1,5 +1,7 @@
 no text, no captions, no logos, no watermark
-no people, no characters, empty environment
+no people, no characters, no animals, empty environment only
+clear foreground/midground/background depth, stable horizon
+single clear light source, readable shadows and materials
 avoid low-quality artifacts or distortion
 avoid malformed anatomy or extra limbs
 no busy patterns

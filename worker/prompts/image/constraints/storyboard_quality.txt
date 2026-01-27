@@ -1,5 +1,7 @@
 no text, no captions, no logos, no watermark
+single key action, clear focal subject
+readable silhouette and subject-background separation
+cinematic framing, balanced lighting
 avoid low-quality artifacts or distortion
 avoid malformed anatomy or extra limbs
-clear focal subject, cinematic framing
-consistent style, balanced lighting
+no split panels, no collage layouts

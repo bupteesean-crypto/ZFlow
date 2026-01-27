@@ -15,6 +15,9 @@ class Project(Base):
 
     id = Column(String(36), primary_key=True, index=True)
     team_space_id = Column(String(36), nullable=True)
+    owner_user_id = Column(String(36), nullable=True, index=True)
+    company_id = Column(String(36), ForeignKey("companies.id"), nullable=True, index=True)
+    visibility = Column(String(20), nullable=False, default="private")
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     status = Column(String(20), nullable=False, default="draft")
@@ -60,11 +63,43 @@ class VoiceRole(Base):
     updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
 
 
+class Company(Base):
+    __tablename__ = "companies"
+
+    id = Column(String(36), primary_key=True, index=True)
+    name = Column(String(200), nullable=False, unique=True)
+    invite_code = Column(String(32), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
+class UserAccount(Base):
+    __tablename__ = "user_accounts"
+
+    id = Column(String(36), primary_key=True, index=True)
+    username = Column(String(120), nullable=False, unique=True, index=True)
+    display_name = Column(String(120), nullable=True)
+    avatar_url = Column(String(500), nullable=True)
+    password_hash = Column(String(128), nullable=False)
+    password_salt = Column(String(64), nullable=False)
+    account_type = Column(String(20), nullable=False, default="personal")
+    roles = Column(JSON, nullable=False, default=list)
+    company_id = Column(String(36), ForeignKey("companies.id"), nullable=True, index=True)
+    is_platform_admin = Column(Boolean, nullable=False, default=False)
+    llm_api_base = Column(String(200), nullable=True)
+    llm_api_key_encrypted = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+
+
 def to_project_dict(project: Project) -> dict[str, Any]:
     return {
         "id": project.id,
         "user_id": getattr(project, "user_id", None),
         "team_space_id": project.team_space_id,
+        "owner_user_id": project.owner_user_id,
+        "company_id": project.company_id,
+        "visibility": project.visibility,
         "name": project.name,
         "description": project.description,
         "status": project.status,
@@ -108,4 +143,30 @@ def to_voice_role_dict(role: VoiceRole) -> dict[str, Any]:
         "metadata": role.metadata_json or {},
         "created_at": role.created_at.isoformat() if role.created_at else None,
         "updated_at": role.updated_at.isoformat() if role.updated_at else None,
+    }
+
+
+def to_user_account_dict(user: UserAccount) -> dict[str, Any]:
+    return {
+        "id": user.id,
+        "uid": user.id[:8],
+        "username": user.username,
+        "display_name": user.display_name,
+        "avatar_url": user.avatar_url,
+        "account_type": user.account_type or "personal",
+        "roles": user.roles or [],
+        "company_id": user.company_id,
+        "is_platform_admin": bool(user.is_platform_admin),
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "updated_at": user.updated_at.isoformat() if user.updated_at else None,
+    }
+
+
+def to_company_dict(company: Company) -> dict[str, Any]:
+    return {
+        "id": company.id,
+        "name": company.name,
+        "invite_code": company.invite_code,
+        "created_at": company.created_at.isoformat() if company.created_at else None,
+        "updated_at": company.updated_at.isoformat() if company.updated_at else None,
     }

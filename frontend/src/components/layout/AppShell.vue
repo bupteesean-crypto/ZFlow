@@ -55,12 +55,26 @@
       <div class="popover-header">
         <div class="avatar-wrap">
           <img :src="avatarUrl" alt="avatar" />
-          <button class="change-avatar" @click="handleChangeAvatar">更换</button>
+          <button class="change-avatar" @click="handleChangeAvatar" :disabled="uploadingAvatar">
+            {{ uploadingAvatar ? '上传中...' : '更换' }}
+          </button>
         </div>
         <div class="user-meta">
-          <div class="username">{{ username }}</div>
+          <div class="username">
+            <template v-if="!editingName">
+              {{ displayName }}
+              <button class="ghost-link" @click="startEditName">编辑昵称</button>
+            </template>
+            <template v-else>
+              <input v-model="displayNameDraft" class="inline-input" maxlength="24" />
+              <button class="ghost-link" @click="saveDisplayName" :disabled="savingProfile">
+                {{ savingProfile ? '保存中' : '保存' }}
+              </button>
+              <button class="ghost-link" @click="cancelEditName">取消</button>
+            </template>
+          </div>
           <div class="uid">
-            UID: {{ uid }}
+            UID: {{ userUid }}
             <button @click="copyUid">复制</button>
           </div>
         </div>
@@ -86,6 +100,7 @@
         </div>
       </div>
       <div class="section actions">
+        <button class="link-btn" @click="openApiSettings">API 设置</button>
         <button class="link-btn" @click="$emit('subscribe')">订阅管理</button>
         <button class="link-btn" @click="$emit('orders')">订单记录</button>
         <button class="link-btn danger" @click="$emit('logout')">退出登录</button>
@@ -100,11 +115,23 @@
     <!-- Toast -->
     <div v-if="toastVisible" class="profile-toast">{{ toastMessage }}</div>
   </div>
+
+  <ApiSettingsModal v-model:show="showApiSettings" @saved="handleApiSaved" />
+  <input
+    ref="avatarInput"
+    type="file"
+    accept="image/*"
+    class="file-input"
+    @change="handleAvatarSelected"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import SideNav from './SideNav.vue';
+import ApiSettingsModal from '../ApiSettingsModal.vue';
+import { fetchMyProfile, updateMyProfile, uploadMyAvatar } from '@/api/userProfile';
 
 interface NavItem {
   name: string;
@@ -150,11 +177,26 @@ const emit = defineEmits<{
   spaceChange: [spaceId: string];
 }>();
 
+const route = useRoute();
 const avatarBtn = ref<HTMLElement | null>(null);
+const avatarInput = ref<HTMLInputElement | null>(null);
 const showProfile = ref(false);
 const toastVisible = ref(false);
 const toastMessage = ref('');
 const currentSpace = ref('');
+const showApiSettings = ref(false);
+const uploadingAvatar = ref(false);
+const savingProfile = ref(false);
+const editingName = ref(false);
+const displayNameDraft = ref('');
+
+const profile = ref({
+  id: '',
+  username: props.username,
+  displayName: props.username,
+  avatarUrl: props.avatarUrl,
+  uid: props.uid,
+});
 
 const navItems: NavItem[] = [
   { name: 'landing', to: '/', icon: '⌂', label: '首页' },
@@ -174,7 +216,7 @@ const closeProfile = () => {
 
 const copyUid = async () => {
   try {
-    await navigator.clipboard.writeText(props.uid);
+    await navigator.clipboard.writeText(userUid.value);
     showToast('复制成功');
   } catch {
     showToast('复制失败');
@@ -182,8 +224,54 @@ const copyUid = async () => {
 };
 
 const handleChangeAvatar = () => {
-  // TODO: Implement avatar change
-  showToast('更换头像功能待实现');
+  if (uploadingAvatar.value) return;
+  avatarInput.value?.click();
+};
+
+const handleAvatarSelected = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  uploadingAvatar.value = true;
+  try {
+    const result = await uploadMyAvatar(file);
+    applyProfileUpdate({ avatar_url: result.avatar_url });
+    showToast('头像已更新');
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : '上传失败');
+  } finally {
+    uploadingAvatar.value = false;
+    input.value = '';
+  }
+};
+
+const startEditName = () => {
+  displayNameDraft.value = profile.value.displayName;
+  editingName.value = true;
+};
+
+const cancelEditName = () => {
+  editingName.value = false;
+  displayNameDraft.value = '';
+};
+
+const saveDisplayName = async () => {
+  const nextName = displayNameDraft.value.trim();
+  if (!nextName) {
+    showToast('请输入昵称');
+    return;
+  }
+  savingProfile.value = true;
+  try {
+    const updated = await updateMyProfile({ display_name: nextName });
+    applyProfile(updated);
+    showToast('昵称已更新');
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : '保存失败');
+  } finally {
+    savingProfile.value = false;
+    editingName.value = false;
+  }
 };
 
 const showToast = (message: string) => {
@@ -198,6 +286,97 @@ const handleSpaceChange = () => {
   emit('spaceChange', currentSpace.value);
 };
 
+const isAuthenticated = () => {
+  return (
+    sessionStorage.getItem('authenticated') === 'true' ||
+    Boolean(sessionStorage.getItem('session_token'))
+  );
+};
+
+const isPlatformAdmin = () => {
+  const raw = sessionStorage.getItem('user');
+  if (!raw) return false;
+  try {
+    return Boolean(JSON.parse(raw)?.is_platform_admin);
+  } catch {
+    return false;
+  }
+};
+
+const checkApiSettings = () => {
+  if (!isAuthenticated()) return;
+  if (isPlatformAdmin()) return;
+  const configured = sessionStorage.getItem('llmConfigured') === 'true';
+  if (!configured) {
+    showApiSettings.value = true;
+  }
+};
+
+const openApiSettings = () => {
+  showApiSettings.value = true;
+};
+
+const handleApiSaved = () => {
+  showApiSettings.value = false;
+};
+
+const loadSessionProfile = () => {
+  const raw = sessionStorage.getItem('user');
+  if (!raw) return;
+  try {
+    const user = JSON.parse(raw);
+    profile.value.id = user.id || '';
+    profile.value.uid = user.uid || (user.id ? String(user.id).slice(0, 8) : '');
+    profile.value.username = user.username || profile.value.username;
+    profile.value.displayName = user.display_name || user.username || profile.value.displayName;
+    profile.value.avatarUrl = user.avatar_url || profile.value.avatarUrl;
+  } catch {
+    // ignore session parse errors
+  }
+};
+
+const applyProfileUpdate = (partial: { display_name?: string; avatar_url?: string }) => {
+  const raw = sessionStorage.getItem('user');
+  if (!raw) return;
+  try {
+    const user = JSON.parse(raw);
+    if (partial.display_name !== undefined) {
+      user.display_name = partial.display_name;
+      profile.value.displayName = partial.display_name || profile.value.displayName;
+    }
+    if (partial.avatar_url !== undefined) {
+      user.avatar_url = partial.avatar_url;
+      profile.value.avatarUrl = partial.avatar_url || profile.value.avatarUrl;
+    }
+    sessionStorage.setItem('user', JSON.stringify(user));
+  } catch {
+    // ignore session update errors
+  }
+};
+
+const applyProfile = (data: { id: string; username: string; display_name: string; avatar_url: string }) => {
+  profile.value.id = data.id;
+  profile.value.uid = data.id ? data.id.slice(0, 8) : profile.value.uid;
+  profile.value.username = data.username;
+  profile.value.displayName = data.display_name || data.username;
+  profile.value.avatarUrl = data.avatar_url || '';
+  applyProfileUpdate({ display_name: profile.value.displayName, avatar_url: profile.value.avatarUrl });
+};
+
+const refreshProfile = async () => {
+  if (!isAuthenticated()) return;
+  try {
+    const data = await fetchMyProfile();
+    applyProfile(data);
+  } catch {
+    // Ignore profile fetch errors for now
+  }
+};
+
+const displayName = computed(() => profile.value.displayName || profile.value.username || props.username);
+const userUid = computed(() => profile.value.uid || props.uid);
+const avatarUrl = computed(() => profile.value.avatarUrl || props.avatarUrl);
+
 // Close popover when clicking outside
 if (typeof document !== 'undefined') {
   document.addEventListener('click', (e) => {
@@ -209,6 +388,20 @@ if (typeof document !== 'undefined') {
     }
   });
 }
+
+onMounted(() => {
+  loadSessionProfile();
+  refreshProfile();
+  checkApiSettings();
+});
+watch(
+  () => route.fullPath,
+  () => {
+    if (!showApiSettings.value) {
+      checkApiSettings();
+    }
+  },
+);
 </script>
 
 <style scoped>
@@ -381,6 +574,30 @@ if (typeof document !== 'undefined') {
   padding: 2px 8px;
   font-size: 12px;
   cursor: pointer;
+}
+
+.ghost-link {
+  margin-left: 8px;
+  background: transparent;
+  border: none;
+  color: var(--md-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.inline-input {
+  min-width: 140px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: var(--md-field-bg);
+  color: var(--md-on-surface);
+  padding: 4px 8px;
+  font-size: 12px;
+  margin-right: 8px;
+}
+
+.file-input {
+  display: none;
 }
 
 .section {

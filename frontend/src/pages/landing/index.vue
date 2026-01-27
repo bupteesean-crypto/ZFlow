@@ -295,8 +295,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast';
 import { createProject, updateProject } from '@/api/projects';
-import { startGeneration } from '@/api/generation';
 import { fetchModels, type ModelOption } from '@/api/models';
+import { startGeneration } from '@/api/generation';
 import { uploadAttachment, updateAttachment, type AttachmentItem } from '@/api/attachments';
 
 interface TodoItem {
@@ -849,10 +849,10 @@ const handleSubmit = async () => {
     sessionStorage.setItem('currentProjectName', projectName);
     sessionStorage.setItem('currentPrompt', trimmed);
     sessionStorage.setItem('currentMode', mode.value);
-    sessionStorage.setItem('streamProjectId', projectId);
-    sessionStorage.setItem('streamType', 'start');
-    sessionStorage.setItem('streamPrompt', trimmed);
-    sessionStorage.setItem('streamStartedAt', String(Date.now()));
+    sessionStorage.removeItem('streamProjectId');
+    sessionStorage.removeItem('streamType');
+    sessionStorage.removeItem('streamPrompt');
+    sessionStorage.removeItem('streamStartedAt');
 
     const documents = mode.value === 'pro' ? buildDocumentsPayload() : undefined;
     await startGeneration(
@@ -861,8 +861,12 @@ const handleSubmit = async () => {
       mode.value,
       selectedModels.value.image || undefined,
       documents,
-      inputConfig
+      inputConfig,
     );
+    sessionStorage.setItem('streamProjectId', projectId);
+    sessionStorage.setItem('streamType', 'start');
+    sessionStorage.setItem('streamPrompt', trimmed);
+    sessionStorage.setItem('streamStartedAt', String(Date.now()));
     generating.value = false;
     router.push('/materials');
   } catch (err) {

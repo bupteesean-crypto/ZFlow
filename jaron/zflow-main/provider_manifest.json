@@ -1,0 +1,212 @@
+{
+  "providers": [
+    {
+      "provider": "z-ai",
+      "base_urls": [
+        "https://api.z.ai/api/paas/v4"
+      ],
+      "auth": {
+        "type": "Bearer",
+        "header_name": "Authorization",
+        "format": "Bearer {api_key}"
+      },
+      "capabilities": [
+        {
+          "capability": "models.page.list",
+          "method": "GET",
+          "path": "/model/page",
+          "mode": "sync",
+          "model_param": {
+            "field": "UNKNOWN",
+            "values": [],
+            "default": "UNKNOWN"
+          },
+          "request_fields": [
+            { "name": "enable", "type": "boolean", "required": false },
+            { "name": "size", "type": "number", "required": false },
+            { "name": "current", "type": "number", "required": false },
+            { "name": "type", "type": "string", "required": false }
+          ],
+          "mutual_exclusive_rules": [],
+          "response_fields_we_need": [
+            "data.records"
+          ],
+          "async_query": {
+            "path": "UNKNOWN",
+            "id_field": "UNKNOWN",
+            "status_field": "UNKNOWN"
+          }
+        },
+        {
+          "capability": "models.full_name.get",
+          "method": "GET",
+          "path": "/model/fullName",
+          "mode": "sync",
+          "model_param": {
+            "field": "UNKNOWN",
+            "values": [],
+            "default": "UNKNOWN"
+          },
+          "request_fields": [
+            { "name": "fullName", "type": "string", "required": true }
+          ],
+          "mutual_exclusive_rules": [],
+          "response_fields_we_need": [
+            "UNKNOWN"
+          ],
+          "async_query": {
+            "path": "UNKNOWN",
+            "id_field": "UNKNOWN",
+            "status_field": "UNKNOWN"
+          }
+        },
+        {
+          "capability": "models.types.list",
+          "method": "GET",
+          "path": "/model/types",
+          "mode": "sync",
+          "model_param": {
+            "field": "UNKNOWN",
+            "values": [],
+            "default": "UNKNOWN"
+          },
+          "request_fields": [],
+          "mutual_exclusive_rules": [],
+          "response_fields_we_need": [
+            "UNKNOWN"
+          ],
+          "async_query": {
+            "path": "UNKNOWN",
+            "id_field": "UNKNOWN",
+            "status_field": "UNKNOWN"
+          }
+        },
+        {
+          "capability": "chat.completions.create",
+          "method": "POST",
+          "path": "/chat/completions",
+          "mode": "sync",
+          "model_param": {
+            "field": "model",
+            "values": [
+              "glm-4.7",
+              "gpt-4o-mini"
+            ],
+            "default": "gpt-4o-mini"
+          },
+          "request_fields": [
+            { "name": "model", "type": "string", "required": true },
+            { "name": "messages", "type": "array", "required": true },
+            { "name": "stream", "type": "boolean", "required": false },
+            { "name": "thinking", "type": "object", "required": false }
+          ],
+          "mutual_exclusive_rules": [],
+          "response_fields_we_need": [
+            "choices[0].delta.content"
+          ],
+          "async_query": {
+            "path": "UNKNOWN",
+            "id_field": "UNKNOWN",
+            "status_field": "UNKNOWN"
+          }
+        },
+        {
+          "capability": "images.generations.create",
+          "method": "POST",
+          "path": "/images/generations",
+          "mode": "sync",
+          "model_param": {
+            "field": "model",
+            "values": [
+              "doubao-seedream-4.0",
+              "doubao-seedream-4.5",
+              "gemini-2.5-flash-image",
+              "gemini-3-pro-image-preview"
+            ],
+            "default": "doubao-seedream-4.0"
+          },
+          "request_fields": [
+            { "name": "model", "type": "string", "required": true },
+            { "name": "prompt", "type": "string", "required": true },
+            { "name": "size", "type": "string", "required": false },
+            { "name": "quality", "type": "string", "required": false },
+            { "name": "style", "type": "string", "required": false },
+            { "name": "images", "type": "array", "required": false },
+            { "name": "mask", "type": "string", "required": false }
+          ],
+          "mutual_exclusive_rules": [],
+          "response_fields_we_need": [
+            "url",
+            "b64_json",
+            "revised_prompt"
+          ],
+          "async_query": {
+            "path": "UNKNOWN",
+            "id_field": "UNKNOWN",
+            "status_field": "UNKNOWN"
+          }
+        },
+        {
+          "capability": "videos.generations.create",
+          "method": "POST",
+          "path": "/videos/generations",
+          "mode": "async",
+          "model_param": {
+            "field": "model",
+            "values": [
+              "doubao-seedance-1-5-pro"
+            ],
+            "default": "doubao-seedance-1-5-pro"
+          },
+          "request_fields": [
+            { "name": "model", "type": "string", "required": true },
+            { "name": "content", "type": "array", "required": true },
+            { "name": "ratio", "type": "string", "required": false },
+            { "name": "duration", "type": "number", "required": false }
+          ],
+          "mutual_exclusive_rules": [],
+          "response_fields_we_need": [
+            "id",
+            "task_id",
+            "taskId",
+            "data.url",
+            "url"
+          ],
+          "async_query": {
+            "path": "/async-result/{task_id}",
+            "id_field": "id|task_id|taskId",
+            "status_field": "status|task_status"
+          }
+        },
+        {
+          "capability": "videos.async_result.get",
+          "method": "GET",
+          "path": "/async-result/{task_id}",
+          "mode": "sync",
+          "model_param": {
+            "field": "UNKNOWN",
+            "values": [],
+            "default": "UNKNOWN"
+          },
+          "request_fields": [
+            { "name": "task_id", "type": "string", "required": true }
+          ],
+          "mutual_exclusive_rules": [],
+          "response_fields_we_need": [
+            "status",
+            "task_status",
+            "data.url",
+            "url",
+            "video_result[0].url",
+            "video_url"
+          ],
+          "async_query": {
+            "path": "UNKNOWN",
+            "id_field": "UNKNOWN",
+            "status_field": "UNKNOWN"
+          }
+        }
+      ]
+    }
+  ]
+}

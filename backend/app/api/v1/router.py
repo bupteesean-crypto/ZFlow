@@ -12,6 +12,7 @@ from app.api.v1 import (
     projects,
     text,
     tts,
+    user_settings,
     voice_roles,
 )
 
@@ -28,3 +29,4 @@ router.include_router(text.router)
 router.include_router(voice_roles.router)
 router.include_router(tts.router)
 router.include_router(music.router)
+router.include_router(user_settings.router)

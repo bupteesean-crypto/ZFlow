@@ -5,18 +5,22 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.v1.deps import get_current_user
 from app.api.v1.response import ok
 from app.db.models import MaterialPackage
 from app.db.session import get_db
 from app.repositories import material_packages as package_repo
+from app.repositories import projects as project_repo
+from app.services.access_control import can_manage_project
 from app.services.feedback_service import FeedbackService
 from app.services.image_service import ImageService
 from app.services.model_registry import select_enabled_model
+from app.services.user_llm_settings import resolve_llm_overrides
 from app.store import new_id
+from app.services.llm_service import LLMService
 
 router = APIRouter(prefix="/images", tags=["images"])
 image_service = ImageService()
-feedback_service = FeedbackService()
 logger = logging.getLogger(__name__)
 STORYBOARD_REFERENCE_IMAGE_LIMIT = 10
 
@@ -151,6 +155,19 @@ def _find_image(
     return None, None, None
 
 
+def _require_package_manage(db: Session, user: object, package: MaterialPackage | None) -> None:
+    if not package:
+        raise HTTPException(status_code=404, detail="Material package not found")
+    project_id = getattr(package, "project_id", None)
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    project = project_repo.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_manage_project(user, project):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
 def _group_key(image: dict) -> tuple:
     image_type = image.get("type") or ""
     shot_id = image.get("shot_id")
@@ -172,6 +189,7 @@ def _group_key(image: dict) -> tuple:
 async def regenerate_image(
     image_id: str,
     payload: Dict[str, Any] = Body(default_factory=dict),
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     if not image_id.strip():
@@ -199,6 +217,11 @@ async def regenerate_image(
         raise HTTPException(status_code=500, detail="Database error")
     if not package or not source_image or images is None:
         raise HTTPException(status_code=404, detail="Image not found")
+    try:
+        _require_package_manage(db, current_user, package)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
 
     materials = dict(package.materials or {})
     metadata = dict(materials.get("metadata") or {})
@@ -329,6 +352,7 @@ async def regenerate_image(
 async def rewrite_image_prompt(
     image_id: str,
     payload: Dict[str, Any] = Body(default_factory=dict),
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     if not image_id.strip():
@@ -339,15 +363,30 @@ async def rewrite_image_prompt(
     feedback = feedback.strip()
 
     try:
-        _, source_image, _ = _find_image(db, image_id)
+        package, source_image, _ = _find_image(db, image_id)
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500, detail="Database error")
-    if not source_image:
+    if not package or not source_image:
         raise HTTPException(status_code=404, detail="Image not found")
+    try:
+        _require_package_manage(db, current_user, package)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
 
     original_prompt = source_image.get("prompt") or ""
     prompt_parts = source_image.get("prompt_parts") if isinstance(source_image.get("prompt_parts"), dict) else None
+    llm_overrides = resolve_llm_overrides(current_user)
+    if not llm_overrides.get("api_key") and not llm_overrides.get("allow_fallback"):
+        raise HTTPException(status_code=400, detail="api_key required")
+    feedback_service = FeedbackService(
+        LLMService(
+            api_key=llm_overrides.get("api_key"),
+            api_base=llm_overrides.get("api_base"),
+            allow_env_fallback=bool(llm_overrides.get("allow_fallback")),
+        )
+    )
     rewritten_prompt = feedback_service.rewrite_prompt("image", original_prompt, feedback, prompt_parts)
     return ok({"rewritten_prompt": rewritten_prompt, "source_image_id": image_id})
 
@@ -355,6 +394,7 @@ async def rewrite_image_prompt(
 @router.post("/{image_id}/adopt")
 async def adopt_image(
     image_id: str,
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     if not image_id.strip():
@@ -366,6 +406,11 @@ async def adopt_image(
         raise HTTPException(status_code=500, detail="Database error")
     if not package or not source_image or images is None:
         raise HTTPException(status_code=404, detail="Image not found")
+    try:
+        _require_package_manage(db, current_user, package)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
 
     target_group = _group_key(source_image)
     updated = False

@@ -1,0 +1,252 @@
+cards:
+
+- capability: models.page.list
+  provider: z-ai
+  base_url: https://api.z.ai/api/paas/v4
+  method: GET
+  path: /model/page
+  auth: none
+  type: NONE
+  header_name: UNKNOWN
+  token_format: UNKNOWN
+  mode: sync
+  request_schema:
+    fields:
+      - name: enable
+        type: boolean
+        required: false
+      - name: size
+        type: number
+        required: false
+      - name: current
+        type: number
+        required: false
+      - name: type
+        type: string
+        required: false
+  mutual_exclusive_rules: []
+  response_schema:
+    fields_we_need:
+      - data.records
+  raw_shape_notes: UNKNOWN
+  async: UNKNOWN
+  errors: "401 invalid key (if auth applied elsewhere), 429 rate limit, otherwise UNKNOWN"
+  constraints: "noAuthEndpoints include /model/page"
+  pricing: UNKNOWN
+  missing_fields:
+    - response_schema.raw_shape
+    - response_schema.status_codes
+    - pagination_shape
+
+- capability: models.full_name.get
+  provider: z-ai
+  base_url: https://api.z.ai/api/paas/v4
+  method: GET
+  path: /model/fullName
+  auth: none
+  type: NONE
+  header_name: UNKNOWN
+  token_format: UNKNOWN
+  mode: sync
+  request_schema:
+    fields:
+      - name: fullName
+        type: string
+        required: true
+  mutual_exclusive_rules: []
+  response_schema:
+    fields_we_need:
+      - UNKNOWN
+  raw_shape_notes: UNKNOWN
+  async: UNKNOWN
+  errors: "401 invalid key (if auth applied elsewhere), 429 rate limit, otherwise UNKNOWN"
+  constraints: "noAuthEndpoints include /model/fullName"
+  pricing: UNKNOWN
+  missing_fields:
+    - response_schema.fields
+    - response_schema.status_codes
+
+- capability: models.types.list
+  provider: z-ai
+  base_url: https://api.z.ai/api/paas/v4
+  method: GET
+  path: /model/types
+  auth: none
+  type: NONE
+  header_name: UNKNOWN
+  token_format: UNKNOWN
+  mode: sync
+  request_schema:
+    fields: []
+  mutual_exclusive_rules: []
+  response_schema:
+    fields_we_need:
+      - UNKNOWN
+  raw_shape_notes: UNKNOWN
+  async: UNKNOWN
+  errors: "401 invalid key (if auth applied elsewhere), 429 rate limit, otherwise UNKNOWN"
+  constraints: "noAuthEndpoints include /model/types"
+  pricing: UNKNOWN
+  missing_fields:
+    - response_schema.fields
+    - response_schema.status_codes
+
+- capability: chat.completions.create
+  provider: z-ai
+  base_url: https://api.z.ai/api/paas/v4
+  method: POST
+  path: /chat/completions
+  auth: bearer
+  type: Bearer
+  header_name: Authorization
+  token_format: "Bearer {api_key}"
+  mode: sync
+  request_schema:
+    fields:
+      - name: model
+        type: string
+        required: true
+      - name: messages
+        type: array
+        required: true
+      - name: stream
+        type: boolean
+        required: false
+      - name: thinking
+        type: object
+        required: false
+  mutual_exclusive_rules: []
+  response_schema:
+    fields_we_need:
+      - choices[0].delta.content
+  raw_shape_notes: "Streaming SSE lines with 'data:' prefix; [DONE] terminator"
+  async: "streaming over HTTP"
+  errors: "401 invalid key, 429 rate limit, non-2xx fetch => error message"
+  constraints: "Stream path explicitly sets stream=true and thinking={type:'disabled'}"
+  pricing: UNKNOWN
+  missing_fields:
+    - non_stream_response_shape
+    - model_enum_authoritative_source
+
+- capability: images.generations.create
+  provider: z-ai
+  base_url: https://api.z.ai/api/paas/v4
+  method: POST
+  path: /images/generations
+  auth: bearer
+  type: Bearer
+  header_name: Authorization
+  token_format: "Bearer {api_key}"
+  mode: sync
+  request_schema:
+    fields:
+      - name: model
+        type: string
+        required: true
+      - name: prompt
+        type: string
+        required: true
+      - name: size
+        type: string
+        required: false
+      - name: quality
+        type: string
+        required: false
+      - name: style
+        type: string
+        required: false
+      - name: images
+        type: array
+        required: false
+      - name: mask
+        type: string
+        required: false
+  mutual_exclusive_rules: []
+  response_schema:
+    fields_we_need:
+      - url
+      - b64_json
+      - revised_prompt
+  raw_shape_notes: "Response array items mapped to {url|b64_json}"
+  async: UNKNOWN
+  errors: "401 invalid key, 429 rate limit, otherwise UNKNOWN"
+  constraints: "quality may be normalized (e.g. 4k -> hd)"
+  pricing: UNKNOWN
+  missing_fields:
+    - response_schema.status_codes
+    - official_model_param_contract
+
+- capability: videos.generations.create
+  provider: z-ai
+  base_url: https://api.z.ai/api/paas/v4
+  method: POST
+  path: /videos/generations
+  auth: bearer
+  type: Bearer
+  header_name: Authorization
+  token_format: "Bearer {api_key}"
+  mode: async
+  request_schema:
+    fields:
+      - name: model
+        type: string
+        required: true
+      - name: content
+        type: array
+        required: true
+      - name: ratio
+        type: string
+        required: false
+      - name: duration
+        type: number
+        required: false
+  mutual_exclusive_rules: []
+  response_schema:
+    fields_we_need:
+      - id
+      - task_id
+      - taskId
+      - data.url
+      - url
+  raw_shape_notes: "content items may include {type:text,text} and {type:image_url,image_url:{url},role}"
+  async: "poll /async-result/{task_id} until status in completed/succeeded/SUCCESS or error"
+  errors: "401 invalid key, 429 rate limit, task_status FAIL/FAILED, status failed/error"
+  constraints: "ratio used (size noted as possible alt in comments)"
+  pricing: UNKNOWN
+  missing_fields:
+    - request_schema.content_item_enum
+    - definitive_async_response_shape
+    - endpoint_discrepancy(/videos vs /videos/generations)
+
+- capability: videos.async_result.get
+  provider: z-ai
+  base_url: https://api.z.ai/api/paas/v4
+  method: GET
+  path: /async-result/{task_id}
+  auth: bearer
+  type: Bearer
+  header_name: Authorization
+  token_format: "Bearer {api_key}"
+  mode: sync
+  request_schema:
+    fields:
+      - name: task_id
+        type: string
+        required: true
+  mutual_exclusive_rules: []
+  response_schema:
+    fields_we_need:
+      - status
+      - task_status
+      - data.url
+      - url
+      - video_result[0].url
+      - video_url
+  raw_shape_notes: "Completion if status in completed/succeeded or task_status SUCCESS or data present"
+  async: UNKNOWN
+  errors: "401 invalid key, 429 rate limit, task_status FAIL/FAILED, status failed/error"
+  constraints: "poll interval 5000ms, maxAttempts 120"
+  pricing: UNKNOWN
+  missing_fields:
+    - response_schema.status_codes
+    - definitive_success_contract

@@ -10,6 +10,13 @@
       </div>
       <div class="floating-ops">
         <button
+          class="pill-btn primary"
+          :disabled="clips.length === 0 || isGeneratingAllVideos || isGeneratingVideo"
+          @click="generateAllVideos"
+        >
+          {{ isGeneratingAllVideos ? '生成中…' : '一键生成视频' }}
+        </button>
+        <button
           class="pill-btn"
           :disabled="clips.length === 0 || isExporting"
           @click="openExportModal"
@@ -29,13 +36,28 @@
         </div>
         <div v-if="currentClip" class="shot-panel">
           <template v-if="leftTab === 'visual'">
-            <div class="panel-title">剪辑操作栏</div>
+            <div class="panel-title">画面编辑</div>
             <div class="shot-header">
               <div class="shot-title">分镜 {{ currentClip.sequenceLabel }}</div>
               <div class="shot-sub">{{ currentClip.sceneName || '未关联场景' }}</div>
             </div>
             <div class="shot-status" :class="{ pending: currentClip.status !== 'ready' }">
-              {{ currentClip.status === 'ready' ? '素材已准备' : '待生成画面' }}
+              {{ currentClip.status === 'ready' ? '分镜画面已准备' : (isGeneratingStoryboard ? '正在生成画面…' : '画面待生成') }}
+            </div>
+
+            <div class="info-card flow-card">
+              <div class="flow-step">
+                <span class="flow-label">① 分镜画面</span>
+                <span :class="['flow-status', currentClip.status === 'ready' ? 'ready' : 'pending']">
+                  {{ currentClip.status === 'ready' ? '已生成' : '待生成' }}
+                </span>
+              </div>
+              <div class="flow-step">
+                <span class="flow-label">② 视频片段</span>
+                <span :class="['flow-status', currentVideoState.status === 'ready' ? 'ready' : currentVideoState.status === 'processing' ? 'pending' : 'empty']">
+                  {{ currentVideoState.status === 'ready' ? '已生成' : currentVideoState.status === 'processing' ? '生成中' : '未生成' }}
+                </span>
+              </div>
             </div>
 
             <div class="info-card">
@@ -54,12 +76,25 @@
               <p class="info-text">{{ currentClip.description || '暂无描述' }}</p>
             </div>
 
+            <div v-if="currentClip.status !== 'ready'" class="info-card">
+              <div class="info-title">分镜画面</div>
+              <div class="status-note">当前画面未生成或生成失败，可点击重新生成。</div>
+              <div class="action-row">
+                <button class="pill-btn primary" :disabled="isGeneratingStoryboard" @click="regenerateStoryboardImages">
+                  {{ isGeneratingStoryboard ? '生成中…' : '重新生成画面' }}
+                </button>
+              </div>
+            </div>
+
             <div class="info-card">
               <button class="collapse-header" @click="toggleImagePrompt">
-                <span>生图提示词</span>
+                <span>分镜画面提示词</span>
                 <span class="collapse-hint">{{ isImagePromptOpen ? '收起' : '展开' }}</span>
               </button>
               <div v-if="isImagePromptOpen" class="collapse-body">
+                <div v-if="currentClip.status !== 'ready'" class="status-note">
+                  画面未生成，提示词将在生成后可编辑。
+                </div>
                 <div v-if="!isEditingPrompt" class="prompt-readonly" @click="startPromptEdit">
                   {{ currentClip.prompt || '暂无提示词，点击编辑补充' }}
                 </div>
@@ -109,17 +144,7 @@
             </div>
 
             <div class="info-card">
-              <div class="info-title">片段操作</div>
-              <div class="action-row">
-                <button class="pill-btn primary" @click="playCurrentClip">
-                  {{ isPlaying && (playMode === 'clip' || playMode === 'video') ? '暂停当前分镜' : '播放当前分镜' }}
-                </button>
-                <button class="pill-btn" @click="jumpToTimeline">定位到时间轴</button>
-              </div>
-            </div>
-
-            <div class="info-card">
-              <div class="info-title">视频片段</div>
+              <div class="info-title">视频片段（由分镜画面生成）</div>
               <div class="field-row">
                 <span class="label">视频模型</span>
                 <select v-model="selectedVideoModelId" class="model-select" :disabled="isGeneratingVideo">
@@ -139,6 +164,9 @@
                 <span class="video-status-note" :class="{ failed: currentVideoState.status === 'failed' }">
                   {{ videoStatusLabel }}
                 </span>
+              </div>
+              <div v-if="currentClip.status !== 'ready'" class="status-note">
+                需要先生成分镜画面，才能转为视频。
               </div>
             </div>
 
@@ -392,19 +420,30 @@
           </button>
           <div class="time-pill">{{ formatTime(currentTimeSec) }} / {{ formatTime(totalDuration) }}</div>
         </div>
-        <div class="canvas" :class="{ empty: !currentClip?.imageUrl && !hasReadyVideo }">
+        <div class="canvas" :class="{ empty: !currentClip?.imageUrl && !hasReadyVideo, playable: hasReadyVideo }" @click="handleCanvasClick">
           <video
             v-if="hasReadyVideo"
             ref="videoRef"
             :src="currentVideoState.videoUrl"
             class="canvas-video"
-            controls
             playsinline
+            webkit-playsinline
+            x5-playsinline="true"
+            x5-video-player-type="h5"
+            preload="metadata"
             @play="handleVideoPlay"
             @pause="handleVideoPause"
             @timeupdate="handleVideoTimeUpdate"
             @ended="handleVideoEnded"
+            @click.stop="handleCanvasClick"
           ></video>
+          <div
+            v-if="hasReadyVideo && !(playMode === 'video' && isPlaying)"
+            class="video-overlay"
+            @click.stop="handleCanvasClick"
+          >
+            点击播放
+          </div>
           <img v-else-if="currentClip?.imageUrl" :src="currentClip.imageUrl" alt="分镜画面" class="canvas-image" />
           <div v-else class="canvas-placeholder">待生成画面</div>
           <div class="canvas-overlay">
@@ -450,6 +489,14 @@
               <div class="clip-thumb" :class="{ pending: clip.status !== 'ready' }">
                 <img v-if="clip.imageUrl" :src="clip.imageUrl" alt="分镜缩略图" />
                 <span v-else>待生成</span>
+                <button
+                  v-if="clip.status !== 'ready'"
+                  class="retry-btn"
+                  :disabled="isGeneratingStoryboard"
+                  @click.stop="regenerateStoryboardImages(index)"
+                >
+                  重试
+                </button>
                 <div class="clip-badge">{{ videoBadgeLabel(clip.shotId) }}</div>
               </div>
               <div class="clip-info">
@@ -471,6 +518,14 @@
           <div class="story-thumb" :class="{ pending: clip.status !== 'ready' }">
             <img v-if="clip.imageUrl" :src="clip.imageUrl" alt="分镜画面" />
             <span v-else>待生成</span>
+            <button
+              v-if="clip.status !== 'ready'"
+              class="retry-btn"
+              :disabled="isGeneratingStoryboard"
+              @click.stop="regenerateStoryboardImages(index)"
+            >
+              重试
+            </button>
             <div class="clip-badge">{{ videoBadgeLabel(clip.shotId) }}</div>
           </div>
           <div class="story-body">
@@ -688,7 +743,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import {
@@ -790,6 +845,7 @@ const promptDraft = ref('');
 const feedbackDraft = ref('');
 const isRegeneratingImage = ref(false);
 const isGeneratingVideo = ref(false);
+const isGeneratingAllVideos = ref(false);
 const showImageFeedbackModal = ref(false);
 const showVideoFeedbackModal = ref(false);
 
@@ -1065,6 +1121,9 @@ const playRange = ref<{ start: number; end: number; mode: 'all' | 'clip' } | nul
 let playTimer: number | null = null;
 let videoPollTimer: number | null = null;
 const videoRef = ref<HTMLVideoElement | null>(null);
+let sequenceTickTimer: number | null = null;
+let sequenceTimeout: number | null = null;
+let sequenceToken = 0;
 
 const videoStatusLabel = computed(() => {
   if (!currentClip.value) return '';
@@ -1085,12 +1144,24 @@ const formatTime = (seconds: number) => {
 
 
 const stopPlayback = () => {
+  sequenceToken += 1;
   if (playTimer !== null) {
     window.clearInterval(playTimer);
     playTimer = null;
   }
+  if (sequenceTickTimer !== null) {
+    window.clearInterval(sequenceTickTimer);
+    sequenceTickTimer = null;
+  }
+  if (sequenceTimeout !== null) {
+    window.clearTimeout(sequenceTimeout);
+    sequenceTimeout = null;
+  }
   if (videoRef.value && !videoRef.value.paused) {
     videoRef.value.pause();
+  }
+  if (videoRef.value) {
+    videoRef.value.onended = null;
   }
   isPlaying.value = false;
   playMode.value = null;
@@ -1147,16 +1218,21 @@ const pausePlayback = () => {
 
 const handleVideoPlay = () => {
   if (!videoRef.value) return;
-  if (playMode.value !== 'video') {
+  if (playMode.value !== 'video' && playMode.value !== 'all') {
     stopPlayback();
   }
-  playMode.value = 'video';
+  if (playMode.value !== 'all') {
+    playMode.value = 'video';
+  }
   isPlaying.value = true;
   const start = clipStartTimes.value[currentShotIndex.value] ?? 0;
   currentTimeSec.value = start + (videoRef.value.currentTime || 0);
 };
 
 const handleVideoPause = () => {
+  if (playMode.value === 'all') {
+    return;
+  }
   if (playMode.value === 'video') {
     isPlaying.value = false;
     playMode.value = null;
@@ -1287,18 +1363,14 @@ const syncVideoPolling = () => {
 
 const togglePlayAll = () => {
   if (!clips.value.length) return;
-  if (playMode.value === 'video') {
+  if (playMode.value === 'all' && isPlaying.value) {
     stopPlayback();
-  }
-  if (playMode.value === 'all') {
-    if (isPlaying.value) {
-      pausePlayback();
-      return;
-    }
-    resumePlayback();
     return;
   }
-  startPlayback(0, totalDuration.value, 'all');
+  if (playMode.value === 'video' || playMode.value === 'clip') {
+    stopPlayback();
+  }
+  startSequencePlayback(true);
 };
 
 const playCurrentClip = () => {
@@ -1315,6 +1387,9 @@ const playCurrentClip = () => {
     stopPlayback();
     playMode.value = 'video';
     isPlaying.value = true;
+    if (video.ended) {
+      video.currentTime = 0;
+    }
     const playPromise = video.play();
     if (playPromise && typeof playPromise.catch === 'function') {
       playPromise.catch(() => {
@@ -1333,11 +1408,113 @@ const playCurrentClip = () => {
   startPlayback(start, end, 'clip');
 };
 
+const handleCanvasClick = () => {
+  if (!hasReadyVideo.value) return;
+  playCurrentClip();
+};
+
 const selectShot = (index: number) => {
   if (index < 0 || index >= clips.value.length) return;
   stopPlayback();
   currentShotIndex.value = index;
   currentTimeSec.value = clipStartTimes.value[index] ?? 0;
+};
+
+const startSequencePlayback = (resume = false) => {
+  if (!clips.value.length) return;
+  stopPlayback();
+  playMode.value = 'all';
+  isPlaying.value = true;
+  sequenceToken += 1;
+  const token = sequenceToken;
+  const index = Math.max(0, currentShotIndex.value);
+  const start = clipStartTimes.value[index] ?? 0;
+  const offset = resume ? Math.max(0, currentTimeSec.value - start) : 0;
+  playSequenceClip(index, offset, token);
+};
+
+const playSequenceClip = async (index: number, offset: number, token: number) => {
+  if (token !== sequenceToken || !clips.value.length) return;
+  if (index >= clips.value.length) {
+    stopPlayback();
+    return;
+  }
+  currentShotIndex.value = index;
+  const clip = clips.value[index];
+  const start = clipStartTimes.value[index] ?? 0;
+  const duration = clip.durationSec || 0;
+  currentTimeSec.value = start + offset;
+
+  const state = videoState.value[clip.shotId];
+  const hasVideo = Boolean(state && state.status === 'ready' && state.videoUrl);
+  if (hasVideo) {
+    await nextTick();
+    if (token !== sequenceToken) return;
+    const video = videoRef.value;
+    if (!video) {
+      playSequenceImageFallback(index, offset, token);
+      return;
+    }
+    if (video.onended) {
+      video.onended = null;
+    }
+    try {
+      video.currentTime = Math.max(0, offset);
+    } catch {
+      video.currentTime = 0;
+    }
+    const playPromise = video.play();
+    if (playPromise && typeof playPromise.then === 'function') {
+      playPromise
+        .then(() => {
+          if (token !== sequenceToken) return;
+          video.onended = () => {
+            if (token !== sequenceToken) return;
+            playSequenceClip(index + 1, 0, token);
+          };
+        })
+        .catch(() => {
+          playSequenceImageFallback(index, offset, token);
+        });
+    } else {
+      video.onended = () => {
+        if (token !== sequenceToken) return;
+        playSequenceClip(index + 1, 0, token);
+      };
+    }
+    return;
+  }
+
+  playSequenceImageFallback(index, offset, token);
+};
+
+const playSequenceImageFallback = (index: number, offset: number, token: number) => {
+  if (token !== sequenceToken) return;
+  const clip = clips.value[index];
+  const start = clipStartTimes.value[index] ?? 0;
+  const duration = clip.durationSec || 0;
+  const remaining = Math.max(0.2, duration - offset);
+  const startAt = performance.now();
+  if (sequenceTickTimer !== null) {
+    window.clearInterval(sequenceTickTimer);
+  }
+  if (sequenceTimeout !== null) {
+    window.clearTimeout(sequenceTimeout);
+  }
+  sequenceTickTimer = window.setInterval(() => {
+    if (token !== sequenceToken) return;
+    const elapsed = (performance.now() - startAt) / 1000;
+    const nextTime = Math.min(start + offset + elapsed, start + duration);
+    currentTimeSec.value = nextTime;
+  }, 120);
+  sequenceTimeout = window.setTimeout(() => {
+    if (token !== sequenceToken) return;
+    if (sequenceTickTimer !== null) {
+      window.clearInterval(sequenceTickTimer);
+      sequenceTickTimer = null;
+    }
+    playSequenceClip(index + 1, 0, token);
+  }, remaining * 1000);
 };
 
 const jumpToTimeline = () => {
@@ -2040,6 +2217,23 @@ const ensureStoryboardImages = async (pkg: MaterialPackage) => {
   }
 };
 
+const regenerateStoryboardImages = async (index?: number) => {
+  if (!currentPackageId.value || isGeneratingStoryboard.value) return;
+  if (typeof index === 'number') {
+    selectShot(index);
+  }
+  isGeneratingStoryboard.value = true;
+  storyboardError.value = '';
+  try {
+    await generateStoryboardImages(currentPackageId.value, false, selectedImageModelId.value || undefined);
+    await refreshPackage(currentPackageId.value, currentClip.value?.shotId);
+  } catch (err) {
+    storyboardError.value = err instanceof Error ? err.message : '分镜图生成失败';
+  } finally {
+    isGeneratingStoryboard.value = false;
+  }
+};
+
 const startPromptEdit = () => {
   if (!currentClip.value) return;
   if (currentClip.value.status !== 'ready') return;
@@ -2126,6 +2320,21 @@ const generateVideoForShot = async () => {
     alert(err instanceof Error ? err.message : '分镜视频生成失败');
   } finally {
     isGeneratingVideo.value = false;
+  }
+};
+
+const generateAllVideos = async () => {
+  if (!currentPackageId.value || isGeneratingAllVideos.value) return;
+  isGeneratingAllVideos.value = true;
+  try {
+    await generateStoryboardVideos(currentPackageId.value, {
+      model_id: selectedVideoModelId.value || undefined,
+    });
+    await refreshPackage(currentPackageId.value, currentClip.value?.shotId);
+  } catch (err) {
+    alert(err instanceof Error ? err.message : '一键生成视频失败');
+  } finally {
+    isGeneratingAllVideos.value = false;
   }
 };
 
@@ -2521,6 +2730,49 @@ onUnmounted(() => {
   padding: 12px;
   background: rgba(10, 16, 28, 0.75);
   border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.flow-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.flow-step {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--md-on-surface);
+}
+
+.flow-label {
+  color: var(--md-on-surface-variant);
+}
+
+.flow-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(10, 16, 28, 0.6);
+  color: var(--md-on-surface-variant);
+}
+
+.flow-status.ready {
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.flow-status.pending {
+  color: #fbbf24;
+  border-color: rgba(251, 146, 60, 0.35);
+  background: rgba(251, 146, 60, 0.12);
+}
+
+.flow-status.empty {
+  color: var(--md-on-surface-variant);
 }
 
 .voice-card {
@@ -3013,6 +3265,10 @@ onUnmounted(() => {
   background: #1b1b1f;
 }
 
+.canvas.playable {
+  cursor: pointer;
+}
+
 .canvas-image {
   width: 100%;
   height: 100%;
@@ -3024,6 +3280,19 @@ onUnmounted(() => {
   height: 100%;
   object-fit: cover;
   background: #000;
+}
+
+.video-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: rgba(2, 6, 23, 0.35);
+  cursor: pointer;
 }
 
 .canvas-placeholder {
@@ -3039,6 +3308,7 @@ onUnmounted(() => {
   padding: 12px;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.65));
   color: #fff;
+  pointer-events: none;
 }
 
 .overlay-title {
@@ -3192,6 +3462,24 @@ onUnmounted(() => {
   justify-content: center;
   font-size: 12px;
   color: var(--md-on-surface-variant);
+}
+
+.retry-btn {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  border: 1px solid rgba(251, 146, 60, 0.55);
+  background: rgba(251, 146, 60, 0.2);
+  color: #fbbf24;
+  border-radius: 999px;
+  font-size: 10px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.retry-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .story-thumb {

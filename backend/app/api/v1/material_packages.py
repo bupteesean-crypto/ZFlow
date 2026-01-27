@@ -1,11 +1,15 @@
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import logging
 from pathlib import Path
 from typing import Any, Dict
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.v1.deps import get_current_user
 from app.api.v1.response import ok
 from app.core.config import settings
 from app.db.session import SessionLocal, get_db
@@ -15,14 +19,25 @@ from app.services.blueprint_service import build_blueprint
 from app.services.generation_events import publish_generation_event, reset_generation_events
 from app.services.generation_todo import TODO_LIST
 from app.services.image_service import ImageService
-from app.services.llm_service import LLMService
+from app.services.llm_service import (
+    LLMService,
+    _normalize_material_package_struct,
+    _validate_material_package_struct,
+)
+from app.services.user_llm_settings import resolve_llm_overrides
 from app.services.model_registry import select_enabled_model
+from app.services.package_events import (
+    format_package_sse,
+    publish_package_event,
+    subscribe_package_events,
+    unsubscribe_package_events,
+)
+from app.services.access_control import can_access_project, can_manage_project
 from app.services.video_service import VideoService
 from app.store import new_id, utc_now
 
 router = APIRouter(tags=["material-packages"])
 image_service = ImageService()
-llm_service = LLMService()
 video_service = VideoService()
 logger = logging.getLogger(__name__)
 
@@ -83,6 +98,32 @@ def _normalize_text(value: object) -> str:
     return ""
 
 
+def _normalize_input_config(value: object) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _normalize_documents(value: object) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _resolve_image_size(input_config: dict) -> str:
+    size = ""
+    if isinstance(input_config, dict):
+        size = input_config.get("image_size") if isinstance(input_config.get("image_size"), str) else ""
+    return size or settings.seedream_default_size or "960x1280"
+
+
+def _build_package_event(package_id: str, event: str, payload: dict | None = None) -> dict:
+    return {
+        "event": event,
+        "package_id": package_id,
+        "ts": utc_now(),
+        "payload": payload or {},
+    }
+
+
 def _select_active_image(images: list[dict]) -> dict | None:
     for image in images:
         if image.get("is_active") is True:
@@ -138,6 +179,46 @@ def _active_storyboard_url(images: list[dict]) -> str:
     if isinstance(chosen, dict):
         return chosen.get("url") or ""
     return ""
+
+
+def _require_project_access(db: Session, user: object, project_id: str) -> dict:
+    project = project_repo.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_access_project(user, project):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return project
+
+
+def _require_project_manage(db: Session, user: object, project_id: str) -> dict:
+    project = project_repo.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_manage_project(user, project):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return project
+
+
+def _require_package_access(db: Session, user: object, package_id: str) -> dict:
+    package = package_repo.get_package(db, package_id)
+    if not package:
+        raise HTTPException(status_code=404, detail="Material package not found")
+    project_id = package.get("project_id") if isinstance(package, dict) else None
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    _require_project_access(db, user, project_id)
+    return package
+
+
+def _require_package_manage(db: Session, user: object, package_id: str) -> dict:
+    package = package_repo.get_package(db, package_id)
+    if not package:
+        raise HTTPException(status_code=404, detail="Material package not found")
+    project_id = package.get("project_id") if isinstance(package, dict) else None
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    _require_project_manage(db, user, project_id)
+    return package
 
 
 def _select_active_video(videos: list[dict]) -> dict | None:
@@ -245,6 +326,28 @@ def _emit_image_error(project_id: str, image_type: str, message: str) -> None:
     publish_generation_event(
         project_id,
         {"type": "image.error", "image_type": image_type, "message": message},
+    )
+
+
+def _emit_package_image_generated(package_id: str, image_id: str, image_type: str) -> None:
+    publish_package_event(
+        package_id,
+        _build_package_event(
+            package_id,
+            "image.generated",
+            {"image_id": image_id, "image_type": image_type},
+        ),
+    )
+
+
+def _emit_package_image_error(package_id: str, image_type: str, message: str) -> None:
+    publish_package_event(
+        package_id,
+        _build_package_event(
+            package_id,
+            "image.error",
+            {"image_type": image_type, "message": message},
+        ),
     )
 
 
@@ -394,6 +497,7 @@ def _run_feedback_image_generation(
     image_size: str,
     model_id: str | None,
     model: str | None,
+    emit_package_events: bool = False,
 ) -> None:
     db = SessionLocal()
     try:
@@ -439,6 +543,8 @@ def _run_feedback_image_generation(
             try:
                 if _append_image_to_package(db, package_id, image_payload):
                     _emit_image_generated(project_id, image_payload["id"], image_payload["type"])
+                    if emit_package_events:
+                        _emit_package_image_generated(package_id, image_payload["id"], image_payload["type"])
             except SQLAlchemyError:
                 db.rollback()
                 logger.exception(
@@ -447,6 +553,8 @@ def _run_feedback_image_generation(
                     subject_id,
                 )
                 _emit_image_error(project_id, "character_sheet", "角色三视图保存失败")
+                if emit_package_events:
+                    _emit_package_image_error(package_id, "character_sheet", "角色三视图保存失败")
 
         for scene in blueprint.get("scenes", []):
             scene_id = scene.get("id")
@@ -469,6 +577,8 @@ def _run_feedback_image_generation(
                     scene_id,
                 )
                 _emit_image_error(project_id, "scene", "场景图生成失败")
+                if emit_package_events:
+                    _emit_package_image_error(package_id, "scene", "场景图生成失败")
             if not isinstance(image_result, dict) or not image_result.get("url"):
                 continue
             image_payload = {
@@ -491,6 +601,8 @@ def _run_feedback_image_generation(
             try:
                 if _append_image_to_package(db, package_id, image_payload):
                     _emit_image_generated(project_id, image_payload["id"], image_payload["type"])
+                    if emit_package_events:
+                        _emit_package_image_generated(package_id, image_payload["id"], image_payload["type"])
             except SQLAlchemyError:
                 db.rollback()
                 logger.exception(
@@ -499,6 +611,8 @@ def _run_feedback_image_generation(
                     scene_id,
                 )
                 _emit_image_error(project_id, "scene", "场景图保存失败")
+                if emit_package_events:
+                    _emit_package_image_error(package_id, "scene", "场景图保存失败")
 
         try:
             package_repo.update_package(db, package_id, {"status": "completed"})
@@ -506,12 +620,217 @@ def _run_feedback_image_generation(
             db.rollback()
             logger.exception("generation stage=image_finalize failed package_id=%s", package_id)
             _emit_image_error(project_id, "all", "图片阶段收尾失败")
+            if emit_package_events:
+                _emit_package_image_error(package_id, "all", "图片阶段收尾失败")
     except Exception:
         logger.exception("feedback image pipeline failed package_id=%s", package_id)
         _emit_image_error(project_id, "all", "图片生成失败")
+        if emit_package_events:
+            _emit_package_image_error(package_id, "all", "图片生成失败")
     finally:
         db.close()
         _emit_done(project_id, package_id)
+
+
+def _run_stream_package_generation(
+    project_id: str,
+    package_id: str,
+    prompt: str,
+    mode: str,
+    documents: list,
+    input_config: dict,
+    image_model_id: str | None,
+    package_version: int,
+    llm_overrides: dict,
+) -> None:
+    db = SessionLocal()
+    partial_text = ""
+    llm = LLMService(
+        api_key=llm_overrides.get("api_key"),
+        api_base=llm_overrides.get("api_base"),
+        allow_env_fallback=bool(llm_overrides.get("allow_fallback")),
+    )
+    try:
+        publish_package_event(
+            package_id, _build_package_event(package_id, "phase.started", {"phase": "text"})
+        )
+
+        def on_delta(delta: str, reasoning: str) -> None:
+            nonlocal partial_text
+            if delta:
+                partial_text += delta
+            payload = {"phase": "text", "delta": delta or ""}
+            if reasoning:
+                payload["reasoning_delta"] = reasoning
+            publish_package_event(package_id, _build_package_event(package_id, "phase.delta", payload))
+
+        result = llm.stream_material_package(
+            prompt,
+            mode,
+            documents=documents,
+            input_config=input_config,
+            on_delta=on_delta,
+        )
+        if result.get("finish_reason") or result.get("done"):
+            publish_package_event(
+                package_id,
+                _build_package_event(
+                    package_id,
+                    "phase.done",
+                    {
+                        "phase": "text",
+                        "finish_reason": result.get("finish_reason"),
+                        "usage": result.get("usage"),
+                    },
+                ),
+            )
+        content = result.get("content") or partial_text
+        if not result.get("done"):
+            raise RuntimeError("stream terminated")
+
+        parsed = llm._parse_json_dict(content or "")
+        normalized = _normalize_material_package_struct(parsed)
+        valid, reason = _validate_material_package_struct(normalized)
+        if not valid:
+            raise ValueError(reason)
+
+        blueprint = build_blueprint(normalized, source_prompt=prompt)
+        image_size = _resolve_image_size(input_config)
+        try:
+            package_name = llm.generate_package_name(
+                blueprint["summary"]["logline"], blueprint.get("art_style", {})
+            )
+        except Exception:
+            package_name = (blueprint["summary"]["logline"] or "素材包")[:10]
+
+        resolved_model_id = image_model_id
+        resolved_model = None
+        try:
+            spec = select_enabled_model(image_model_id, "image")
+        except ValueError:
+            spec = None
+        if spec:
+            resolved_model_id = spec.id
+            resolved_model = spec.model
+
+        materials = {
+            "metadata": {
+                "summary": blueprint["summary"]["logline"],
+                "keywords": blueprint["summary"]["keywords"],
+                "blueprint_v1": blueprint,
+                "image_plan": {
+                    "prompt": blueprint["scenes"][0]["prompt_hint"]
+                    if blueprint.get("scenes")
+                    else blueprint["summary"]["synopsis"],
+                    "style": None,
+                    "aspect_ratio": (
+                        input_config.get("aspect_ratio") if isinstance(input_config, dict) else None
+                    )
+                    or "3:4",
+                    "size": image_size,
+                    "seed": None,
+                },
+                "image_size": image_size,
+                "images": [],
+                "video_plan": {"status": "pending", "items": []},
+                "package_version": package_version,
+                "package_name": package_name,
+                "parent_package_id": None,
+                "user_prompt": prompt,
+                "user_feedback": None,
+                "generation_mode": mode,
+                "image_model_id": resolved_model_id,
+                "input_config": input_config,
+                "input_documents": documents,
+            },
+            "art_style": {
+                "style_name": blueprint.get("art_style", {}).get("style_name", ""),
+                "description": blueprint.get("art_style", {}).get("style_prompt", ""),
+            },
+            "characters": [],
+            "scenes": [],
+            "storyboards": [],
+        }
+
+        try:
+            package_repo.update_package(
+                db,
+                package_id,
+                {
+                    "package_name": package_name,
+                    "summary": blueprint["summary"]["logline"],
+                    "status": "generating",
+                    "materials": materials,
+                },
+            )
+        except SQLAlchemyError:
+            db.rollback()
+            raise RuntimeError("Database error")
+
+        publish_package_event(
+            package_id,
+            _build_package_event(
+                package_id,
+                "progress",
+                {"phase": "images", "message": "正在生成角色与场景图…"},
+            ),
+        )
+
+        _run_feedback_image_generation(
+            project_id,
+            package_id,
+            blueprint,
+            image_size,
+            resolved_model_id,
+            resolved_model,
+            emit_package_events=True,
+        )
+
+        publish_package_event(
+            package_id, _build_package_event(package_id, "done", {"status": "completed"})
+        )
+    except Exception as exc:
+        logger.exception("stream generation failed package_id=%s", package_id)
+        materials_payload = None
+        try:
+            package = package_repo.get_package(db, package_id)
+            if package and isinstance(package.get("materials"), dict):
+                materials_payload = package.get("materials")
+        except SQLAlchemyError:
+            materials_payload = None
+        if isinstance(materials_payload, dict):
+            metadata = materials_payload.get("metadata") if isinstance(materials_payload.get("metadata"), dict) else {}
+            metadata["partial_text"] = partial_text
+            materials_payload["metadata"] = metadata
+        try:
+            package_repo.update_package(
+                db,
+                package_id,
+                {
+                    "status": "failed",
+                    "materials": materials_payload or {"metadata": {"partial_text": partial_text}},
+                },
+            )
+        except SQLAlchemyError:
+            db.rollback()
+        error_code = "stream_error"
+        error_message = "生成失败"
+        if isinstance(exc, RuntimeError) and "rate" in str(exc).lower():
+            error_code = "rate_limited"
+            error_message = "模型限流，请稍后重试"
+        publish_package_event(
+            package_id,
+            _build_package_event(
+                package_id,
+                "error",
+                {"code": error_code, "message": error_message, "detail": str(exc)},
+            ),
+        )
+        publish_package_event(
+            package_id, _build_package_event(package_id, "done", {"status": "failed"})
+        )
+    finally:
+        db.close()
 
 
 def _build_storyboard_prompt_parts(shot: dict, scene: dict, blueprint: dict) -> dict:
@@ -581,15 +900,189 @@ def _render_storyboard_prompt(parts: dict) -> str:
     return "\n\n".join(sections).strip()
 
 
+@router.post("/material-packages")
+async def create_material_package(
+    background_tasks: BackgroundTasks,
+    payload: Dict[str, Any] = Body(default_factory=dict),
+    current_user: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    project_id = payload.get("project_id")
+    if not isinstance(project_id, str) or not project_id.strip():
+        raise HTTPException(status_code=400, detail="project_id required")
+    try:
+        project = _require_project_manage(db, current_user, project_id)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+
+    prompt = payload.get("prompt")
+    if isinstance(prompt, str) and prompt.strip():
+        llm_input = prompt.strip()
+    else:
+        llm_input = project.get("description") or project.get("name") or ""
+    if not isinstance(llm_input, str) or not llm_input.strip():
+        raise HTTPException(status_code=400, detail="prompt required")
+
+    mode = payload.get("mode")
+    mode = mode.strip().lower() if isinstance(mode, str) else "general"
+    if mode not in {"general", "pro"}:
+        mode = "general"
+    documents = _normalize_documents(payload.get("documents"))
+    input_config = _normalize_input_config(payload.get("input_config"))
+    if mode == "pro" and not documents:
+        metadata = project.get("metadata") if isinstance(project.get("metadata"), dict) else {}
+        attachments = metadata.get("attachments") if isinstance(metadata.get("attachments"), list) else []
+        documents = _normalize_documents(attachments)
+    image_model_id = payload.get("image_model_id")
+    if image_model_id is not None and not isinstance(image_model_id, str):
+        raise HTTPException(status_code=400, detail="image_model_id must be a string")
+    image_model_id = image_model_id.strip() if isinstance(image_model_id, str) and image_model_id.strip() else None
+    if not image_model_id and isinstance(input_config.get("image_model_id"), str):
+        image_model_id = input_config.get("image_model_id").strip() or None
+    if image_model_id:
+        try:
+            select_enabled_model(image_model_id, "image")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="image_model_id not available")
+    if input_config:
+        try:
+            project_repo.update_project(db, project_id, {"input_config": input_config})
+        except SQLAlchemyError:
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Database error")
+
+    llm_overrides = resolve_llm_overrides(current_user)
+    if not llm_overrides.get("api_key") and not llm_overrides.get("allow_fallback"):
+        raise HTTPException(status_code=400, detail="api_key required")
+
+    try:
+        items = package_repo.list_packages_for_project(db, project_id)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+    package_version = _next_package_version(items)
+    image_size = _resolve_image_size(input_config)
+    materials = {
+        "metadata": {
+            "summary": "",
+            "keywords": [],
+            "blueprint_v1": {},
+            "image_plan": {
+                "prompt": "",
+                "style": None,
+                "aspect_ratio": (
+                    input_config.get("aspect_ratio") if isinstance(input_config, dict) else None
+                )
+                or "3:4",
+                "size": image_size,
+                "seed": None,
+            },
+            "image_size": image_size,
+            "images": [],
+            "video_plan": {"status": "pending", "items": []},
+            "package_version": package_version,
+            "package_name": "生成中",
+            "parent_package_id": None,
+            "user_prompt": llm_input,
+            "user_feedback": None,
+            "generation_mode": mode,
+            "image_model_id": image_model_id,
+            "input_config": input_config,
+            "input_documents": documents,
+        },
+        "art_style": {"style_name": "", "description": ""},
+        "characters": [],
+        "scenes": [],
+        "storyboards": [],
+    }
+
+    try:
+        package = package_repo.create_package(
+            db,
+            project_id=project_id,
+            package_name="生成中",
+            status="generating",
+            materials=materials,
+            parent_id=None,
+        )
+        project_repo.update_project(
+            db,
+            project_id,
+            {
+                "last_material_package_id": package["id"],
+                "status": "generating",
+                "stage": "generating",
+                "progress": 0,
+            },
+        )
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+    background_tasks.add_task(
+        _run_stream_package_generation,
+        project_id,
+        package["id"],
+        llm_input,
+        mode,
+        documents,
+        input_config,
+        image_model_id,
+        package_version,
+        llm_overrides,
+    )
+    return ok({"package_id": package["id"], "status": "running"})
+
+
+@router.get("/material-packages/{package_id}/events")
+async def stream_material_package_events(
+    package_id: str,
+    current_user: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    if not package_id.strip():
+        raise HTTPException(status_code=400, detail="package_id required")
+    try:
+        _require_package_access(db, current_user, package_id)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+    queue, history = subscribe_package_events(package_id)
+
+    async def event_stream():
+        try:
+            for payload in history:
+                yield format_package_sse(payload)
+            while True:
+                try:
+                    payload = await asyncio.wait_for(queue.get(), timeout=15)
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"
+                    continue
+                yield format_package_sse(payload)
+                if payload.get("event") in {"done", "error"}:
+                    break
+        finally:
+            unsubscribe_package_events(package_id, queue)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/projects/{project_id}/material-packages")
 async def list_material_packages(
     project_id: str,
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     try:
-        project = project_repo.get_project(db, project_id)
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+        _require_project_access(db, current_user, project_id)
         items = package_repo.list_packages_for_project(db, project_id)
     except HTTPException:
         raise
@@ -602,15 +1095,14 @@ async def list_material_packages(
 @router.get("/material-packages/{package_id}")
 async def get_material_package(
     package_id: str,
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     try:
-        package = package_repo.get_package(db, package_id)
+        package = _require_package_manage(db, current_user, package_id)
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500, detail="Database error")
-    if not package:
-        raise HTTPException(status_code=404, detail="Material package not found")
     return ok(package)
 
 
@@ -618,6 +1110,7 @@ async def get_material_package(
 async def update_material_package(
     package_id: str,
     payload: Dict[str, Any] = Body(default_factory=dict),
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     if "package_name" in payload and payload["package_name"] is not None and not isinstance(payload["package_name"], str):
@@ -631,6 +1124,7 @@ async def update_material_package(
     if "is_active" in payload and not isinstance(payload["is_active"], bool):
         raise HTTPException(status_code=400, detail="is_active must be a boolean")
     try:
+        _require_package_manage(db, current_user, package_id)
         package = package_repo.update_package(db, package_id, payload)
     except SQLAlchemyError:
         db.rollback()
@@ -644,6 +1138,7 @@ async def update_material_package(
 async def generate_storyboard_images(
     package_id: str,
     payload: Dict[str, Any] = Body(default_factory=dict),
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     force = payload.get("force") is True
@@ -654,12 +1149,10 @@ async def generate_storyboard_images(
     if model_id is not None and not isinstance(model_id, str):
         raise HTTPException(status_code=400, detail="model_id must be a string")
     try:
-        package = package_repo.get_package(db, package_id)
+        package = _require_package_manage(db, current_user, package_id)
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500, detail="Database error")
-    if not package:
-        raise HTTPException(status_code=404, detail="Material package not found")
 
     materials = package.get("materials") if isinstance(package.get("materials"), dict) else {}
     metadata = materials.get("metadata") if isinstance(materials.get("metadata"), dict) else {}
@@ -710,7 +1203,7 @@ async def generate_storyboard_images(
             existing_by_shot.setdefault(shot_id, []).append(image)
 
     generated = []
-    last_storyboard_url = ""
+    generation_tasks = []
     for shot in storyboard:
         if not isinstance(shot, dict):
             continue
@@ -730,8 +1223,6 @@ async def generate_storyboard_images(
                     has_real = True
                     break
             if has_real:
-                if active_existing_url:
-                    last_storyboard_url = active_existing_url
                 continue
 
         scene_id = shot.get("scene_id") if isinstance(shot.get("scene_id"), str) else ""
@@ -754,43 +1245,80 @@ async def generate_storyboard_images(
             ref_images.append(scene_url)
         for subject_id in _extract_subject_ids(shot, subjects):
             ref_images.extend(_subject_reference_urls(images, subject_id))
-        if last_storyboard_url:
-            ref_images.append(last_storyboard_url)
         ref_images = _dedupe_urls(ref_images, STORYBOARD_REFERENCE_IMAGE_LIMIT)
+        generation_tasks.append(
+            {
+                "shot_id": shot_id,
+                "scene_id": scene_id,
+                "scene_name": scene.get("name") if isinstance(scene, dict) else None,
+                "prompt": prompt,
+                "prompt_parts": prompt_parts,
+                "ref_images": ref_images,
+            }
+        )
+
+    def _generate_storyboard_image(task: dict) -> dict:
+        shot_id = task.get("shot_id")
         image_result = None
         try:
-            if ref_images:
-                image_result = image_service.generate_image_with_refs(prompt, ref_images, size=size, model=resolved_model)
+            if task.get("ref_images"):
+                image_result = image_service.generate_image_with_refs(
+                    task["prompt"],
+                    task["ref_images"],
+                    size=size,
+                    model=resolved_model,
+                )
             else:
-                image_result = image_service.generate_image(prompt, size=size, model=resolved_model)
+                image_result = image_service.generate_image(
+                    task["prompt"],
+                    size=size,
+                    model=resolved_model,
+                )
         except Exception:
             logger.exception("storyboard image generation failed package_id=%s shot_id=%s", package_id, shot_id)
-        if not isinstance(image_result, dict) or not image_result.get("url"):
-            continue
+        return {"task": task, "image_result": image_result}
 
-        for image in images:
-            if image.get("type") == "storyboard" and image.get("shot_id") == shot_id:
-                image["is_active"] = False
+    if generation_tasks:
+        max_workers = len(generation_tasks)
+        loop = asyncio.get_running_loop()
+        if max_workers <= 1:
+            results = [_generate_storyboard_image(generation_tasks[0])]
+        else:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                results = await asyncio.gather(
+                    *[
+                        loop.run_in_executor(executor, _generate_storyboard_image, task)
+                        for task in generation_tasks
+                    ]
+                )
 
-        new_image = {
-            "id": new_id(),
-            "type": "storyboard",
-            "shot_id": shot_id,
-            "scene_id": scene_id,
-            "scene_name": scene.get("name") if isinstance(scene, dict) else None,
-            "url": image_result.get("url"),
-            "prompt": image_result.get("prompt") or prompt,
-            "prompt_parts": prompt_parts,
-            "prompt_source": "storyboard_autogen",
-            "provider": image_result.get("provider"),
-            "model": image_result.get("model"),
-            "model_id": resolved_model_id,
-            "size": image_result.get("size"),
-            "is_active": True,
-        }
-        images.append(new_image)
-        generated.append(new_image)
-        last_storyboard_url = new_image.get("url") or last_storyboard_url
+        for result in results:
+            task = result.get("task") or {}
+            image_result = result.get("image_result")
+            shot_id = task.get("shot_id")
+            if not isinstance(image_result, dict) or not image_result.get("url"):
+                continue
+            for image in images:
+                if image.get("type") == "storyboard" and image.get("shot_id") == shot_id:
+                    image["is_active"] = False
+            new_image = {
+                "id": new_id(),
+                "type": "storyboard",
+                "shot_id": shot_id,
+                "scene_id": task.get("scene_id") or "",
+                "scene_name": task.get("scene_name"),
+                "url": image_result.get("url"),
+                "prompt": image_result.get("prompt") or task.get("prompt") or "",
+                "prompt_parts": task.get("prompt_parts") or {},
+                "prompt_source": "storyboard_autogen",
+                "provider": image_result.get("provider"),
+                "model": image_result.get("model"),
+                "model_id": resolved_model_id,
+                "size": image_result.get("size"),
+                "is_active": True,
+            }
+            images.append(new_image)
+            generated.append(new_image)
 
     metadata["images"] = images
     if resolved_model_id:
@@ -816,6 +1344,7 @@ async def generate_storyboard_images(
 async def generate_storyboard_videos(
     package_id: str,
     payload: Dict[str, Any] = Body(default_factory=dict),
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     force = payload.get("force") is True
@@ -841,13 +1370,22 @@ async def generate_storyboard_videos(
     if (prompt_override or feedback) and not (isinstance(shot_id, str) and shot_id.strip()):
         raise HTTPException(status_code=400, detail="shot_id required when prompt or feedback is provided")
 
+    llm = None
+    if feedback:
+        llm_overrides = resolve_llm_overrides(current_user)
+        if not llm_overrides.get("api_key") and not llm_overrides.get("allow_fallback"):
+            raise HTTPException(status_code=400, detail="api_key required")
+        llm = LLMService(
+            api_key=llm_overrides.get("api_key"),
+            api_base=llm_overrides.get("api_base"),
+            allow_env_fallback=bool(llm_overrides.get("allow_fallback")),
+        )
+
     try:
-        package = package_repo.get_package(db, package_id)
+        package = _require_package_manage(db, current_user, package_id)
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500, detail="Database error")
-    if not package:
-        raise HTTPException(status_code=404, detail="Material package not found")
 
     materials = package.get("materials") if isinstance(package.get("materials"), dict) else {}
     metadata = materials.get("metadata") if isinstance(materials.get("metadata"), dict) else {}
@@ -946,8 +1484,8 @@ async def generate_storyboard_videos(
         prompt = (prompt_override or base_prompt or "").strip()
         prompt_source = "storyboard_video_autogen"
 
-        if feedback:
-            prompt = llm_service.rewrite_prompt(prompt, feedback, prompt_parts)
+        if feedback and llm:
+            prompt = llm.rewrite_prompt(prompt, feedback, prompt_parts)
             prompt_source = "user_feedback"
         elif prompt_override:
             prompt_source = "user_edit"
@@ -1007,17 +1545,16 @@ async def generate_storyboard_videos(
 async def get_storyboard_video_result(
     package_id: str,
     task_id: str,
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     if not task_id.strip():
         raise HTTPException(status_code=400, detail="task_id required")
     try:
-        package = package_repo.get_package(db, package_id)
+        package = _require_package_manage(db, current_user, package_id)
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500, detail="Database error")
-    if not package:
-        raise HTTPException(status_code=404, detail="Material package not found")
 
     materials = package.get("materials") if isinstance(package.get("materials"), dict) else {}
     metadata = materials.get("metadata") if isinstance(materials.get("metadata"), dict) else {}
@@ -1053,6 +1590,7 @@ async def regenerate_from_feedback(
     package_id: str,
     background_tasks: BackgroundTasks,
     payload: Dict[str, Any] = Body(default_factory=dict),
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     if not package_id.strip():
@@ -1066,13 +1604,20 @@ async def regenerate_from_feedback(
         raise HTTPException(status_code=400, detail="image_model_id must be a string")
     image_model_id = image_model_id.strip() if isinstance(image_model_id, str) and image_model_id.strip() else None
 
+    llm_overrides = resolve_llm_overrides(current_user)
+    if not llm_overrides.get("api_key") and not llm_overrides.get("allow_fallback"):
+        raise HTTPException(status_code=400, detail="api_key required")
+    llm = LLMService(
+        api_key=llm_overrides.get("api_key"),
+        api_base=llm_overrides.get("api_base"),
+        allow_env_fallback=bool(llm_overrides.get("allow_fallback")),
+    )
+
     try:
-        package = package_repo.get_package(db, package_id)
+        package = _require_package_manage(db, current_user, package_id)
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500, detail="Database error")
-    if not package:
-        raise HTTPException(status_code=404, detail="Material package not found")
 
     project_id = package.get("project_id")
     if not project_id:
@@ -1147,19 +1692,27 @@ async def regenerate_from_feedback(
         previous_scenes = previous_blueprint.get("scenes") if isinstance(previous_blueprint, dict) else []
         previous_storyboard = previous_blueprint.get("storyboard") if isinstance(previous_blueprint, dict) else []
 
-        summary, keywords = llm_service.generate_summary(
+        def _stage_delta(section: str):
+            def handler(delta: str, _reasoning: str) -> None:
+                if not delta:
+                    return
+                _emit_content_update(project_id, section, {"delta": delta})
+            return handler
+
+        summary, keywords = llm.generate_summary(
             str(source_prompt),
             mode,
             documents=documents,
             input_config=input_config,
             feedback=feedback,
             previous_summary=previous_summary,
+            on_delta=_stage_delta("summary"),
         )
         _emit_todo_update(project_id, "summary", "done")
         _emit_content_update(project_id, "summary", summary)
 
         current_step = "art_style"
-        art_style = llm_service.generate_art_style(
+        art_style = llm.generate_art_style(
             summary,
             str(source_prompt),
             mode,
@@ -1167,16 +1720,17 @@ async def regenerate_from_feedback(
             input_config=input_config,
             feedback=feedback,
             previous_art_style=previous_art_style if isinstance(previous_art_style, dict) else {},
+            on_delta=_stage_delta("art_style"),
         )
         _emit_todo_update(project_id, "art_style", "done")
         _emit_content_update(project_id, "art_style", art_style)
 
         current_step = "package_name"
-        package_name = llm_service.generate_package_name(summary, art_style)
+        package_name = llm.generate_package_name(summary, art_style)
         _emit_content_update(project_id, "package_name", package_name)
 
         current_step = "characters"
-        subjects = llm_service.generate_characters(
+        subjects = llm.generate_characters(
             summary,
             art_style,
             str(source_prompt),
@@ -1185,12 +1739,13 @@ async def regenerate_from_feedback(
             input_config=input_config,
             feedback=feedback,
             previous_subjects=previous_subjects if isinstance(previous_subjects, list) else [],
+            on_delta=_stage_delta("characters"),
         )
         _emit_todo_update(project_id, "characters", "done")
         _emit_content_update(project_id, "characters", subjects)
 
         current_step = "scenes"
-        scenes = llm_service.generate_scenes(
+        scenes = llm.generate_scenes(
             summary,
             art_style,
             subjects,
@@ -1200,12 +1755,13 @@ async def regenerate_from_feedback(
             input_config=input_config,
             feedback=feedback,
             previous_scenes=previous_scenes if isinstance(previous_scenes, list) else [],
+            on_delta=_stage_delta("scenes"),
         )
         _emit_todo_update(project_id, "scenes", "done")
         _emit_content_update(project_id, "scenes", scenes)
 
         current_step = "storyboard"
-        storyboard = llm_service.generate_storyboard(
+        storyboard = llm.generate_storyboard(
             summary,
             art_style,
             subjects,
@@ -1216,6 +1772,7 @@ async def regenerate_from_feedback(
             input_config=input_config,
             feedback=feedback,
             previous_storyboard=previous_storyboard if isinstance(previous_storyboard, list) else [],
+            on_delta=_stage_delta("storyboard"),
         )
         _emit_todo_update(project_id, "storyboard", "done")
         _emit_content_update(project_id, "storyboard", storyboard)

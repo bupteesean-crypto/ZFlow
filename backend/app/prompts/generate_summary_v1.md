@@ -1,20 +1,15 @@
-你正在生成短视频素材包的「故事梗概」。
+生成短视频素材包的「故事梗概」。
 
-只输出 JSON，且仅包含以下字段：
-- summary (string, 中文, 1-2 句，概括主题与叙事推进，不写镜头/场景细节)
+只输出 JSON：
+{"summary": "..."}
 
 要求：
-- 全部中文，语言简洁具体，有画面感。
-- 必须体现心理对比或情绪变化。
-- 不要照搬用户输入或反馈，除非明确要求。
+- 中文 1-2 句，包含 主体/目标/阻力/转折/结果
+- 不写镜头与场景细节
+- 不照搬用户输入或反馈
 
-输入是 JSON，包含：
-- mode: "general" 或 "pro"
-- user_prompt: 用户原始想法
-- summary: 可选，上一版故事梗概
-- feedback: 可选，用户修改意见
-- documents: 可选，用户提供的约束
-- input_config: 可选，输入阶段的配置（风格/画幅/时长/主体）
+输入 JSON 字段：
+- mode, user_prompt, summary(可选), feedback(可选), documents(可选), input_config(可选)
 
-如果有 feedback，把它当作改进指令，基于上一版优化。
-只返回 JSON，不要 Markdown，不要额外说明。
+有 feedback 时基于上一版优化。
+只返回 JSON，不要 Markdown。

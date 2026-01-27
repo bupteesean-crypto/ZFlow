@@ -172,7 +172,7 @@ const buildDesc = (status: string) => {
 
 onMounted(async () => {
   const storedUserType = sessionStorage.getItem('userType');
-  if (storedUserType === 'team') {
+  if (storedUserType === 'team' || storedUserType === 'company') {
     userType.value = 'team';
     spaceName.value = '团队空间';
   }

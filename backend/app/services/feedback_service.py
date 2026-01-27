@@ -14,8 +14,8 @@ class FeedbackService:
     Text feedback rewrites create new candidates stored outside blueprint_v1.
     """
 
-    def __init__(self) -> None:
-        self._llm = LLMService()
+    def __init__(self, llm: LLMService | None = None) -> None:
+        self._llm = llm or LLMService()
 
     def rewrite_prompt(
         self,

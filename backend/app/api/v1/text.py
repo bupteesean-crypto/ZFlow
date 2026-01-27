@@ -6,20 +6,35 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.v1.deps import get_current_user
 from app.api.v1.response import ok
 from app.db.models import MaterialPackage
 from app.db.session import get_db
 from app.repositories import material_packages as package_repo
 from app.services.feedback_service import FeedbackService
+from app.services.llm_service import LLMService
+from app.services.user_llm_settings import resolve_llm_overrides
 from app.store import new_id
 
 router = APIRouter(prefix="/text", tags=["text"])
-feedback_service = FeedbackService()
 logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _build_feedback_service(user: object) -> FeedbackService:
+    overrides = resolve_llm_overrides(user)
+    if not overrides.get("api_key") and not overrides.get("allow_fallback"):
+        raise HTTPException(status_code=400, detail="api_key required")
+    return FeedbackService(
+        LLMService(
+            api_key=overrides.get("api_key"),
+            api_base=overrides.get("api_base"),
+            allow_env_fallback=bool(overrides.get("allow_fallback")),
+        )
+    )
 
 
 def _get_package(db: Session, package_id: str) -> Optional[MaterialPackage]:
@@ -142,6 +157,7 @@ def _resolve_storyboard_description(text_candidates: dict, blueprint: dict, shot
 @router.post("/art-style/feedback")
 async def art_style_feedback(
     payload: Dict[str, Any] = Body(default_factory=dict),
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     package_id = payload.get("material_package_id")
@@ -165,6 +181,7 @@ async def art_style_feedback(
     text_candidates = _ensure_text_candidates(metadata)
     blueprint = _get_blueprint(materials)
     current_style = _resolve_art_style(text_candidates, blueprint)
+    feedback_service = _build_feedback_service(current_user)
     rewritten = feedback_service.rewrite_prompt("art_style", current_style, feedback)
     if not isinstance(rewritten, dict):
         logger.warning("Art style rewrite returned invalid payload; falling back to current style.")
@@ -200,6 +217,7 @@ async def art_style_feedback(
 @router.post("/summary/feedback")
 async def summary_feedback(
     payload: Dict[str, Any] = Body(default_factory=dict),
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     package_id = payload.get("material_package_id")
@@ -223,6 +241,7 @@ async def summary_feedback(
     text_candidates = _ensure_text_candidates(metadata)
     blueprint = _get_blueprint(materials)
     current_summary = _resolve_summary(text_candidates, blueprint)
+    feedback_service = _build_feedback_service(current_user)
     rewritten = feedback_service.rewrite_prompt("summary", current_summary, feedback)
     if not isinstance(rewritten, str):
         logger.warning("Summary rewrite returned invalid payload; falling back to current summary.")
@@ -258,6 +277,7 @@ async def summary_feedback(
 async def subject_feedback(
     subject_id: str,
     payload: Dict[str, Any] = Body(default_factory=dict),
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     if not subject_id.strip():
@@ -287,6 +307,7 @@ async def subject_feedback(
         raise HTTPException(status_code=404, detail="Subject not found")
 
     current_subject = _resolve_subject(text_candidates, blueprint, subject_id)
+    feedback_service = _build_feedback_service(current_user)
     rewritten = feedback_service.rewrite_prompt("subject", current_subject, feedback)
     if not isinstance(rewritten, dict):
         logger.warning("Subject rewrite returned invalid payload; falling back to current subject.")
@@ -323,6 +344,7 @@ async def subject_feedback(
 async def scene_feedback(
     scene_id: str,
     payload: Dict[str, Any] = Body(default_factory=dict),
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     if not scene_id.strip():
@@ -352,6 +374,7 @@ async def scene_feedback(
         raise HTTPException(status_code=404, detail="Scene not found")
 
     current_scene = _resolve_scene(text_candidates, blueprint, scene_id)
+    feedback_service = _build_feedback_service(current_user)
     rewritten = feedback_service.rewrite_prompt("scene", current_scene, feedback)
     if not isinstance(rewritten, dict):
         logger.warning("Scene rewrite returned invalid payload; falling back to current scene.")
@@ -388,6 +411,7 @@ async def scene_feedback(
 async def storyboard_feedback(
     shot_id: str,
     payload: Dict[str, Any] = Body(default_factory=dict),
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     if not shot_id.strip():
@@ -417,6 +441,7 @@ async def storyboard_feedback(
         raise HTTPException(status_code=404, detail="Storyboard shot not found")
 
     current_description = _resolve_storyboard_description(text_candidates, blueprint, shot_id)
+    feedback_service = _build_feedback_service(current_user)
     rewritten = feedback_service.rewrite_prompt("storyboard_description", current_description, feedback)
     if not isinstance(rewritten, str):
         logger.warning("Storyboard rewrite returned invalid payload; falling back to current description.")

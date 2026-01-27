@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from queue import Empty
 from typing import Any, Dict
 
@@ -9,6 +10,7 @@ from starlette.responses import StreamingResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.v1.deps import get_current_user
 from app.api.v1.response import ok
 from app.core.config import settings
 from app.core.events import emit_event, new_trace_id
@@ -27,11 +29,12 @@ from app.services.generation_events import (
 from app.services.generation_todo import TODO_LIST
 from app.services.image_service import ImageService
 from app.services.llm_service import LLMService
+from app.services.user_llm_settings import resolve_llm_overrides
 from app.services.model_registry import select_enabled_model
+from app.services.access_control import can_access_project, can_manage_project
 from app.store import GENERATION_TASKS, GENERATION_TRACES, new_id, utc_now
 
 router = APIRouter(prefix="/generation", tags=["generation"])
-llm_service = LLMService()
 image_service = ImageService()
 logger = logging.getLogger(__name__)
 
@@ -433,10 +436,16 @@ def _run_generation_task(
     trace_id: str,
     image_model_id: str | None,
     image_model: str | None,
+    llm_overrides: dict,
 ) -> None:
     db = SessionLocal()
     current_step = "summary"
     error_sent = False
+    llm = LLMService(
+        api_key=llm_overrides.get("api_key"),
+        api_base=llm_overrides.get("api_base"),
+        allow_env_fallback=bool(llm_overrides.get("allow_fallback")),
+    )
     reset_generation_events(project_id)
     _update_task(task_id, status="running", progress=0)
     _emit_assistant_message(project_id, "我将按以下步骤为你生成素材包，请稍等")
@@ -452,47 +461,57 @@ def _run_generation_task(
         trace_id=trace_id,
     )
     try:
-        summary, keywords = llm_service.generate_summary(
+        def _stage_delta(section: str):
+            def handler(delta: str, _reasoning: str) -> None:
+                if not delta:
+                    return
+                _emit_content_update(project_id, section, {"delta": delta})
+            return handler
+
+        summary, keywords = llm.generate_summary(
             llm_input,
             mode,
             documents=documents,
             input_config=input_config,
+            on_delta=_stage_delta("summary"),
         )
         _emit_todo_update(project_id, "summary", "done")
         _emit_content_update(project_id, "summary", summary)
         _update_task(task_id, progress=STEP_PROGRESS["summary"])
 
         current_step = "art_style"
-        art_style = llm_service.generate_art_style(
+        art_style = llm.generate_art_style(
             summary,
             llm_input,
             mode,
             documents=documents,
             input_config=input_config,
+            on_delta=_stage_delta("art_style"),
         )
         _emit_todo_update(project_id, "art_style", "done")
         _emit_content_update(project_id, "art_style", art_style)
         _update_task(task_id, progress=STEP_PROGRESS["art_style"])
 
         current_step = "package_name"
-        package_name = llm_service.generate_package_name(summary, art_style)
+        package_name = llm.generate_package_name(summary, art_style)
         _emit_content_update(project_id, "package_name", package_name)
 
         current_step = "characters"
-        subjects = llm_service.generate_characters(
+        subjects = llm.generate_characters(
             summary,
             art_style,
             llm_input,
             mode,
             documents=documents,
             input_config=input_config,
+            on_delta=_stage_delta("characters"),
         )
         _emit_todo_update(project_id, "characters", "done")
         _emit_content_update(project_id, "characters", subjects)
         _update_task(task_id, progress=STEP_PROGRESS["characters"])
 
         current_step = "scenes"
-        scenes = llm_service.generate_scenes(
+        scenes = llm.generate_scenes(
             summary,
             art_style,
             subjects,
@@ -500,13 +519,14 @@ def _run_generation_task(
             mode,
             documents=documents,
             input_config=input_config,
+            on_delta=_stage_delta("scenes"),
         )
         _emit_todo_update(project_id, "scenes", "done")
         _emit_content_update(project_id, "scenes", scenes)
         _update_task(task_id, progress=STEP_PROGRESS["scenes"])
 
         current_step = "storyboard"
-        storyboard = llm_service.generate_storyboard(
+        storyboard = llm.generate_storyboard(
             summary,
             art_style,
             subjects,
@@ -515,6 +535,7 @@ def _run_generation_task(
             mode,
             documents=documents,
             input_config=input_config,
+            on_delta=_stage_delta("storyboard"),
         )
         _emit_todo_update(project_id, "storyboard", "done")
         _emit_content_update(project_id, "storyboard", storyboard)
@@ -596,6 +617,7 @@ def _run_generation_task(
         _emit_text_done(project_id, package["id"])
 
         try:
+            image_tasks: list[dict] = []
             for subject in blueprint.get("subjects", []):
                 subject_id = subject.get("id")
                 subject_name = subject.get("name")
@@ -608,103 +630,104 @@ def _run_generation_task(
                     )
                 else:
                     sheet_prompt = _build_character_sheet_prompt(subject, blueprint) or blueprint["summary"]["logline"]
-                image_result = None
-                try:
-                    image_result = image_service.generate_image(sheet_prompt, size=image_size, model=image_model)
-                except Exception:
-                    logger.exception(
-                        "generation stage=character_sheet failed project_id=%s subject_id=%s",
-                        project_id,
-                        subject_id,
-                    )
-                    _emit_image_error(project_id, "character_sheet", "角色三视图生成失败")
-                if not isinstance(image_result, dict) or not image_result.get("url"):
-                    continue
                 prompt_parts = _build_character_prompt_parts(subject, blueprint, sheet_prompt)
-                image_payload = {
-                    "id": new_id(),
-                    "type": "character_sheet",
-                    "subject_id": subject_id,
-                    "subject_name": subject_name,
-                    "url": image_result.get("url"),
-                    "prompt": image_result.get("prompt") or sheet_prompt,
-                    "prompt_parts": prompt_parts,
-                    "provider": image_result.get("provider"),
-                    "model": image_result.get("model"),
-                    "model_id": image_model_id,
-                    "size": image_result.get("size"),
-                    "is_active": True,
-                }
-                try:
-                    if _append_image_to_package(db, package["id"], image_payload):
-                        _emit_image_generated(project_id, image_payload["id"], image_payload["type"])
-                except SQLAlchemyError:
-                    db.rollback()
-                    logger.exception(
-                        "generation stage=character_sheet persist failed project_id=%s subject_id=%s",
-                        project_id,
-                        subject_id,
-                    )
-                    _emit_image_error(project_id, "character_sheet", "角色三视图保存失败")
-
-                for scene in blueprint.get("scenes", []):
-                    scene_id = scene.get("id")
-                    base_prompt = scene.get("image_prompt") if isinstance(scene.get("image_prompt"), str) else ""
-                    if base_prompt.strip():
-                        scene_prompt = _compose_image_prompt(
-                            base_prompt,
-                            _build_style_prompt(blueprint.get("art_style", {})),
-                            SCENE_QUALITY_CONSTRAINTS,
-                        )
-                    else:
-                        scene_prompt = scene.get("prompt_hint") or scene.get("description") or blueprint["summary"]["logline"]
-                    logger.info("generation stage=image_plan project_id=%s scene_id=%s", project_id, scene_id)
-                    image_result = None
-                    try:
-                        image_started_at = time.perf_counter()
-                        image_result = image_service.generate_image(scene_prompt, size=image_size, model=image_model)
-                        image_duration_ms = int((time.perf_counter() - image_started_at) * 1000)
-                        logger.info(
-                            "generation stage=image_gen project_id=%s scene_id=%s duration_ms=%s request_id=%s",
-                            project_id,
-                            scene_id,
-                            image_duration_ms,
-                            (image_result or {}).get("request_id"),
-                        )
-                    except Exception:
-                        logger.exception(
-                            "generation stage=image_gen failed project_id=%s scene_id=%s",
-                            project_id,
-                            scene_id,
-                        )
-                        _emit_image_error(project_id, "scene", "场景图生成失败")
-                    if not isinstance(image_result, dict) or not image_result.get("url"):
-                        continue
-                    prompt_parts = _build_scene_prompt_parts(scene, blueprint)
-                    image_payload = {
-                        "id": new_id(),
-                        "type": "scene",
-                        "scene_id": scene_id,
-                        "url": image_result.get("url"),
-                        "prompt": image_result.get("prompt") or scene_prompt,
+                image_tasks.append(
+                    {
+                        "kind": "character_sheet",
+                        "subject_id": subject_id,
+                        "subject_name": subject_name,
+                        "prompt": sheet_prompt,
                         "prompt_parts": prompt_parts,
-                        "provider": image_result.get("provider"),
-                        "model": image_result.get("model"),
-                        "model_id": image_model_id,
-                        "size": image_result.get("size"),
-                        "is_active": True,
                     }
-                    try:
-                        if _append_image_to_package(db, package["id"], image_payload):
-                            _emit_image_generated(project_id, image_payload["id"], image_payload["type"])
-                    except SQLAlchemyError:
-                        db.rollback()
-                        logger.exception(
-                            "generation stage=image_gen persist failed project_id=%s scene_id=%s",
-                            project_id,
-                            scene_id,
-                        )
-                        _emit_image_error(project_id, "scene", "场景图保存失败")
+                )
+
+            for scene in blueprint.get("scenes", []):
+                scene_id = scene.get("id")
+                base_prompt = scene.get("image_prompt") if isinstance(scene.get("image_prompt"), str) else ""
+                if base_prompt.strip():
+                    scene_prompt = _compose_image_prompt(
+                        base_prompt,
+                        _build_style_prompt(blueprint.get("art_style", {})),
+                        SCENE_QUALITY_CONSTRAINTS,
+                    )
+                else:
+                    scene_prompt = scene.get("prompt_hint") or scene.get("description") or blueprint["summary"]["logline"]
+                prompt_parts = _build_scene_prompt_parts(scene, blueprint)
+                image_tasks.append(
+                    {
+                        "kind": "scene",
+                        "scene_id": scene_id,
+                        "prompt": scene_prompt,
+                        "prompt_parts": prompt_parts,
+                    }
+                )
+
+            def _generate_image(task: dict) -> dict:
+                started_at = time.perf_counter()
+                try:
+                    result = image_service.generate_image(task["prompt"], size=image_size, model=image_model)
+                except Exception as exc:
+                    return {"task": task, "error": str(exc)}
+                duration_ms = int((time.perf_counter() - started_at) * 1000)
+                return {"task": task, "image_result": result, "duration_ms": duration_ms}
+
+            if image_tasks:
+                max_workers = len(image_tasks)
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = [executor.submit(_generate_image, task) for task in image_tasks]
+                    for future in as_completed(futures):
+                        result = future.result()
+                        task = result.get("task") or {}
+                        kind = task.get("kind")
+                        if result.get("error"):
+                            if kind == "character_sheet":
+                                _emit_image_error(project_id, "character_sheet", "角色三视图生成失败")
+                            else:
+                                _emit_image_error(project_id, "scene", "场景图生成失败")
+                            continue
+                        image_result = result.get("image_result")
+                        if not isinstance(image_result, dict) or not image_result.get("url"):
+                            continue
+                        if kind == "character_sheet":
+                            image_payload = {
+                                "id": new_id(),
+                                "type": "character_sheet",
+                                "subject_id": task.get("subject_id"),
+                                "subject_name": task.get("subject_name"),
+                                "url": image_result.get("url"),
+                                "prompt": image_result.get("prompt") or task.get("prompt") or "",
+                                "prompt_parts": task.get("prompt_parts") or {},
+                                "provider": image_result.get("provider"),
+                                "model": image_result.get("model"),
+                                "model_id": image_model_id,
+                                "size": image_result.get("size"),
+                                "is_active": True,
+                            }
+                        else:
+                            image_payload = {
+                                "id": new_id(),
+                                "type": "scene",
+                                "scene_id": task.get("scene_id"),
+                                "url": image_result.get("url"),
+                                "prompt": image_result.get("prompt") or task.get("prompt") or "",
+                                "prompt_parts": task.get("prompt_parts") or {},
+                                "provider": image_result.get("provider"),
+                                "model": image_result.get("model"),
+                                "model_id": image_model_id,
+                                "size": image_result.get("size"),
+                                "is_active": True,
+                            }
+                        try:
+                            if _append_image_to_package(db, package["id"], image_payload):
+                                _emit_image_generated(project_id, image_payload["id"], image_payload["type"])
+                        except SQLAlchemyError:
+                            db.rollback()
+                            logger.exception(
+                                "generation stage=image_gen persist failed project_id=%s image_type=%s",
+                                project_id,
+                                image_payload.get("type"),
+                            )
+                            _emit_image_error(project_id, image_payload.get("type") or "scene", "图片保存失败")
 
             try:
                 package_repo.update_package(db, package["id"], {"status": "completed"})
@@ -729,14 +752,17 @@ def _run_generation_task(
             },
             trace_id=trace_id,
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("generation failed project_id=%s", project_id)
         _update_task(task_id, status="failed", progress=0)
         if not error_sent:
             error_sent = True
+            error_message = "生成失败"
+            if isinstance(exc, RuntimeError) and "rate" in str(exc).lower():
+                error_message = "模型限流，请稍后重试"
             publish_generation_event(
                 project_id,
-                {"type": "generation.error", "step": current_step, "message": "生成失败"},
+                {"type": "generation.error", "step": current_step, "message": error_message},
             )
         emit_event(
             "generation.completed",
@@ -752,9 +778,22 @@ def _run_generation_task(
 
 
 @router.get("/stream/{project_id}")
-async def stream_generation(project_id: str) -> StreamingResponse:
+async def stream_generation(
+    project_id: str,
+    current_user: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
     if not project_id.strip():
         raise HTTPException(status_code=400, detail="project_id required")
+    try:
+        project = project_repo.get_project(db, project_id)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_access_project(current_user, project):
+        raise HTTPException(status_code=403, detail="Forbidden")
     queue, history = subscribe_generation_events(project_id)
 
     def event_stream():
@@ -789,6 +828,7 @@ async def stream_generation(project_id: str) -> StreamingResponse:
 async def start_generation(
     background_tasks: BackgroundTasks,
     payload: Dict[str, Any] = Body(default_factory=dict),
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     project_id = payload.get("project_id")
@@ -801,6 +841,8 @@ async def start_generation(
         raise HTTPException(status_code=500, detail="Database error")
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    if not can_manage_project(current_user, project):
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     prompt = payload.get("prompt")
     if isinstance(prompt, str) and prompt.strip():
@@ -860,6 +902,9 @@ async def start_generation(
         trace_id=trace_id,
     )
     reset_generation_events(project_id)
+    llm_overrides = resolve_llm_overrides(current_user)
+    if not llm_overrides.get("api_key") and not llm_overrides.get("allow_fallback"):
+        raise HTTPException(status_code=400, detail="api_key required")
     background_tasks.add_task(
         _run_generation_task,
         project_id,
@@ -871,6 +916,7 @@ async def start_generation(
         trace_id,
         image_model_id,
         image_model,
+        llm_overrides,
     )
     return ok(task)
 
@@ -878,6 +924,7 @@ async def start_generation(
 @router.get("/progress/{project_id}")
 async def get_generation_progress(
     project_id: str,
+    current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     if not project_id.strip():
@@ -889,6 +936,8 @@ async def get_generation_progress(
         raise HTTPException(status_code=500, detail="Database error")
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    if not can_access_project(current_user, project):
+        raise HTTPException(status_code=403, detail="Forbidden")
     tasks = [task for task in GENERATION_TASKS.values() if task["project_id"] == project_id]
     return ok({"list": tasks})
 
@@ -897,12 +946,23 @@ async def get_generation_progress(
 async def retry_generation(
     task_id: str,
     background_tasks: BackgroundTasks,
+    current_user: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     if not task_id.strip():
         raise HTTPException(status_code=400, detail="task_id required")
     task = GENERATION_TASKS.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    try:
+        project = project_repo.get_project(db, task["project_id"])
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_manage_project(current_user, project):
+        raise HTTPException(status_code=403, detail="Forbidden")
     task["status"] = "pending"
     task["progress"] = 0
     task["updated_at"] = utc_now()
@@ -922,12 +982,25 @@ async def retry_generation(
 
 
 @router.post("/skip/{task_id}")
-async def skip_generation(task_id: str) -> Dict[str, Any]:
+async def skip_generation(
+    task_id: str,
+    current_user: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
     if not task_id.strip():
         raise HTTPException(status_code=400, detail="task_id required")
     task = GENERATION_TASKS.get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    try:
+        project = project_repo.get_project(db, task["project_id"])
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not can_manage_project(current_user, project):
+        raise HTTPException(status_code=403, detail="Forbidden")
     task["status"] = "failed"
     task["updated_at"] = utc_now()
     trace_id = GENERATION_TRACES.get(task_id)

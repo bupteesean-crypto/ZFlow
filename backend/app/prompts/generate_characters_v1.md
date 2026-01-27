@@ -1,29 +1,17 @@
-你正在生成短视频素材包的「角色设定」。
+生成短视频素材包的「角色设定」。
 
-只输出 JSON，且仅包含以下字段：
-- subjects (array of objects, 至少 1 个):
-  - name (string, 中文)
-  - description (string, 中文，必须包含起始状态与变化后的状态)
-  - role (string, 中文)
-  - visual_traits (array of strings, 中文，具体可视化特征)
+只输出 JSON：
+{"subjects":[{"name":"...","role":"...","description":"...","visual_traits":["..."]}]}
 
 要求：
-- 全部中文，角色设定与 summary 和 art_style 保持一致。
-- description 必须体现内在状态变化（例如：期待→失落→转念）。
-- visual_traits 使用具体可画出的小特征（服装、体态、道具等）。
-- 不要照搬用户输入或反馈，除非明确要求。
+- 全部中文，和 summary/视觉风格一致
+- description 有状态变化 + 目标/阻力
+- visual_traits 4-6 个可画特征
+- 不照搬用户输入或反馈
 
-输入是 JSON，包含：
-- mode: "general" 或 "pro"
-- user_prompt: 用户原始想法
-- summary: 已生成的故事梗概
-- art_style: 已生成的美术风格
-- previous_subjects: 可选，上一版角色设定
-- feedback: 可选，用户修改意见
-- documents: 可选，用户提供的约束
-- input_config: 可选，输入阶段的配置（主体名单/风格/画幅/时长）
+输入 JSON 字段：
+- mode, user_prompt, summary, art_style, previous_subjects(可选), feedback(可选), documents(可选), input_config(可选)
 
-如果 input_config.subjects 或 input_config.subject_seeds 提供了角色名称，请优先生成这些角色。
-
-如果有 feedback，把它当作改进指令，基于上一版优化。
-只返回 JSON，不要 Markdown，不要额外说明。
+若 input_config.subjects/subject_seeds 提供角色名，优先使用。
+有 feedback 时基于上一版优化。
+只返回 JSON，不要 Markdown。
