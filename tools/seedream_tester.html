@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Seedream 三视图测试工具</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Helvetica Neue", Arial, sans-serif;
+      }
+      body {
+        margin: 0;
+        background: #f6f6f6;
+        color: #1d1d1f;
+      }
+      .page {
+        max-width: 1100px;
+        margin: 32px auto;
+        padding: 0 24px 40px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 8px;
+      }
+      p {
+        margin: 0 0 16px;
+        color: #555;
+        font-size: 14px;
+      }
+      .panel {
+        background: #fff;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+      }
+      label {
+        font-size: 13px;
+        color: #333;
+        display: block;
+        margin-bottom: 6px;
+      }
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid #d6d6d6;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+      textarea {
+        min-height: 140px;
+        resize: vertical;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .row input[type="checkbox"] {
+        width: auto;
+        margin-right: 6px;
+      }
+      button {
+        border: none;
+        border-radius: 8px;
+        padding: 10px 18px;
+        background: #111827;
+        color: #fff;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      button:disabled {
+        background: #9ca3af;
+        cursor: not-allowed;
+      }
+      .result-list {
+        margin-top: 24px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 12px;
+        border: 1px solid #e5e7eb;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .card img {
+        width: 100%;
+        border-radius: 8px;
+        background: #f1f1f1;
+      }
+      .meta {
+        font-size: 12px;
+        color: #6b7280;
+        white-space: pre-wrap;
+      }
+      .status {
+        margin-top: 12px;
+        font-size: 13px;
+        color: #6b7280;
+      }
+      .log {
+        margin-top: 12px;
+        font-size: 12px;
+        color: #374151;
+        background: #f3f4f6;
+        padding: 10px;
+        border-radius: 8px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <h1>Seedream 三视图测试工具</h1>
+      <p>输入提示词并生成图片，便于对比不同版本的三视图提示词效果。</p>
+
+      <div class="panel">
+        <div class="grid">
+          <div>
+            <label for="apiBase">API Base / Endpoint</label>
+            <input
+              id="apiBase"
+              value="https://open.bigmodel.cn/api/paas/v4/images/generations"
+              placeholder="https://open.bigmodel.cn/api/paas/v4/images/generations"
+            />
+          </div>
+          <div>
+            <label for="apiKey">API Key</label>
+            <input id="apiKey" type="password" placeholder="输入你的 API Key" />
+          </div>
+          <div>
+            <label for="model">模型</label>
+            <input id="model" value="doubao-seedream-4.5" />
+          </div>
+          <div>
+            <label for="size">尺寸（可选）</label>
+            <input id="size" placeholder="留空则不传 size（例如 2048x2048）" />
+          </div>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <label for="prompt">提示词</label>
+          <textarea id="prompt" placeholder="输入三视图提示词..."></textarea>
+        </div>
+
+        <div class="row" style="margin-top: 12px;">
+          <label style="display: flex; align-items: center; margin-bottom: 0;">
+            <input id="watermark" type="checkbox" />
+            添加水印（默认不勾选）
+          </label>
+          <button id="generateBtn">生成</button>
+        </div>
+
+        <div id="status" class="status"></div>
+        <div id="log" class="log" style="display: none;"></div>
+      </div>
+
+      <div id="resultList" class="result-list"></div>
+    </div>
+
+    <script>
+      const apiBaseEl = document.getElementById("apiBase");
+      const apiKeyEl = document.getElementById("apiKey");
+      const modelEl = document.getElementById("model");
+      const sizeEl = document.getElementById("size");
+      const promptEl = document.getElementById("prompt");
+      const watermarkEl = document.getElementById("watermark");
+      const generateBtn = document.getElementById("generateBtn");
+      const statusEl = document.getElementById("status");
+      const logEl = document.getElementById("log");
+      const resultList = document.getElementById("resultList");
+
+      const extractUrl = (data) => {
+        if (!data || typeof data !== "object") return null;
+        const extractFrom = (node) => {
+          if (!node) return null;
+          if (Array.isArray(node)) {
+            for (const item of node) {
+              const url = extractFrom(item);
+              if (url) return url;
+            }
+            return null;
+          }
+          if (typeof node === "object") {
+            return node.url || node.image_url || node.imageUrl || null;
+          }
+          return null;
+        };
+
+        const direct = extractFrom(data);
+        if (direct) return direct;
+        for (const key of ["data", "output"]) {
+          const url = extractFrom(data[key]);
+          if (url) return url;
+        }
+        return null;
+      };
+
+      const setStatus = (text) => {
+        statusEl.textContent = text;
+      };
+
+      const showLog = (text) => {
+        logEl.style.display = "block";
+        logEl.textContent = text;
+      };
+
+      generateBtn.addEventListener("click", async () => {
+        const apiBase = apiBaseEl.value.trim();
+        const apiKey = apiKeyEl.value.trim();
+        const model = modelEl.value.trim();
+        const prompt = promptEl.value.trim();
+        const size = sizeEl.value.trim();
+
+        if (!apiBase || !apiKey || !model || !prompt) {
+          setStatus("请填写 API 地址、API Key、模型、提示词");
+          return;
+        }
+
+        generateBtn.disabled = true;
+        setStatus("生成中...");
+        showLog("");
+
+        const payload = {
+          model,
+          prompt,
+          watermark: watermarkEl.checked,
+        };
+        if (size) {
+          payload.size = size;
+        }
+
+        try {
+          const response = await fetch(apiBase, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(payload),
+          });
+
+          const text = await response.text();
+          let data = null;
+          try {
+            data = JSON.parse(text);
+          } catch (err) {
+            data = null;
+          }
+
+          if (!response.ok) {
+            showLog(text);
+            setStatus(`请求失败：${response.status}`);
+            return;
+          }
+
+          const url = extractUrl(data);
+          if (!url) {
+            showLog(text);
+            setStatus("未解析到图片 URL，请检查返回结构");
+            return;
+          }
+
+          const card = document.createElement("div");
+          card.className = "card";
+          const img = document.createElement("img");
+          img.src = url;
+          img.alt = "生成结果";
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          meta.textContent = `模型：${model}\n尺寸：${size || "未指定"}\n水印：${watermarkEl.checked ? "是" : "否"}\n提示词：${prompt}`;
+          card.appendChild(img);
+          card.appendChild(meta);
+          resultList.prepend(card);
+
+          setStatus("生成完成");
+        } catch (err) {
+          setStatus("请求失败，请检查网络或 CORS");
+        } finally {
+          generateBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

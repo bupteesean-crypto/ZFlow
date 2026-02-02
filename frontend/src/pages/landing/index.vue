@@ -296,7 +296,7 @@ import { useRouter } from 'vue-router';
 import { useToast } from '@/composables/useToast';
 import { createProject, updateProject } from '@/api/projects';
 import { fetchModels, type ModelOption } from '@/api/models';
-import { startGeneration } from '@/api/generation';
+import { createMaterialPackage } from '@/api/material-packages';
 import { uploadAttachment, updateAttachment, type AttachmentItem } from '@/api/attachments';
 
 interface TodoItem {
@@ -855,18 +855,17 @@ const handleSubmit = async () => {
     sessionStorage.removeItem('streamStartedAt');
 
     const documents = mode.value === 'pro' ? buildDocumentsPayload() : undefined;
-    await startGeneration(
-      projectId,
-      trimmed,
-      mode.value,
-      selectedModels.value.image || undefined,
+    const createResult = await createMaterialPackage({
+      project_id: projectId,
+      prompt: trimmed,
+      mode: mode.value,
       documents,
-      inputConfig,
-    );
-    sessionStorage.setItem('streamProjectId', projectId);
-    sessionStorage.setItem('streamType', 'start');
-    sessionStorage.setItem('streamPrompt', trimmed);
-    sessionStorage.setItem('streamStartedAt', String(Date.now()));
+      input_config: inputConfig,
+      image_model_id: selectedModels.value.image || undefined,
+    });
+    sessionStorage.setItem('streamPackageId', createResult.package_id);
+    sessionStorage.setItem('streamPackagePrompt', trimmed);
+    sessionStorage.setItem('streamPackageStartedAt', String(Date.now()));
     generating.value = false;
     router.push('/materials');
   } catch (err) {

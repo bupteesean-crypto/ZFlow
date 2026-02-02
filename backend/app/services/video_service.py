@@ -214,6 +214,7 @@ class VideoService:
             "prompt": cleaned_prompt or "No prompt provided.",
             "image_url": image_input,
             "size": size,
+            "watermark": False,
         }
         if image_input:
             preview = image_input

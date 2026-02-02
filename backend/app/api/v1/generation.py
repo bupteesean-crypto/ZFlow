@@ -493,7 +493,8 @@ def _run_generation_task(
         _update_task(task_id, progress=STEP_PROGRESS["art_style"])
 
         current_step = "package_name"
-        package_name = llm.generate_package_name(summary, art_style)
+        fallback_name = (summary or llm_input or "素材包").strip()[:10]
+        package_name = fallback_name or "素材包"
         _emit_content_update(project_id, "package_name", package_name)
 
         current_step = "characters"

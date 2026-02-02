@@ -1498,81 +1498,127 @@ class LLMService:
             ",".join(sorted(payload_context.keys())),
         )
 
-        req = request.Request(
-            self._resolve_glm_endpoint(),
-            data=json.dumps(
-                {
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {
-                            "role": "user",
-                            "content": json.dumps(payload_context, ensure_ascii=False),
-                        },
-                    ],
-                    "temperature": temperature,
-                    "stream": True,
-                }
-            ).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}",
-            },
-            method="POST",
-        )
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": json.dumps(payload_context, ensure_ascii=False)},
+            ],
+            "temperature": temperature,
+            "stream": True,
+        }
 
-        content_parts: list[str] = []
-        finish_reason = None
-        usage = None
-        saw_done = False
+        max_attempts = 5
+        backoff_base = 2.0
 
-        try:
-            with request.urlopen(req, timeout=180) as response:
-                for raw_line in response:
-                    if not raw_line:
-                        continue
-                    line = raw_line.decode("utf-8").strip()
-                    if not line or not line.startswith("data:"):
-                        continue
-                    data = line[len("data:") :].strip()
-                    if data == "[DONE]":
-                        saw_done = True
-                        break
-                    try:
-                        chunk = json.loads(data)
-                    except json.JSONDecodeError:
-                        continue
-                    choices = chunk.get("choices") or []
-                    choice = choices[0] if choices else {}
-                    delta = choice.get("delta") if isinstance(choice, dict) else {}
-                    delta_content = delta.get("content") if isinstance(delta, dict) else ""
-                    delta_reasoning = delta.get("reasoning_content") if isinstance(delta, dict) else ""
-                    if delta_content:
-                        content_parts.append(delta_content)
-                    if on_delta and (delta_content or delta_reasoning):
+        for attempt in range(max_attempts):
+            content_parts: list[str] = []
+            finish_reason = None
+            usage = None
+            saw_done = False
+            emitted = False
+            req = request.Request(
+                self._resolve_glm_endpoint(),
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {api_key}",
+                },
+                method="POST",
+            )
+            try:
+                with request.urlopen(req, timeout=180) as response:
+                    for raw_line in response:
+                        if not raw_line:
+                            continue
+                        line = raw_line.decode("utf-8").strip()
+                        if not line or not line.startswith("data:"):
+                            continue
+                        data = line[len("data:") :].strip()
+                        if data == "[DONE]":
+                            saw_done = True
+                            break
                         try:
-                            on_delta(delta_content or "", delta_reasoning or "")
-                        except Exception:
-                            logger.exception("LLM stream delta callback failed")
-                    if choice.get("finish_reason"):
-                        finish_reason = choice.get("finish_reason")
-                    if chunk.get("usage"):
-                        usage = chunk.get("usage")
-        except error.HTTPError as exc:
-            logger.error("GLM API error: status=%s reason=%s", exc.code, exc.reason)
-            if exc.code == 429:
-                self._last_error = "rate_limited"
-            elif exc.code in {500, 502, 503, 504}:
-                self._last_error = "upstream_error"
-        except Exception:
-            logger.exception("GLM API stream request failed")
-            self._last_error = "request_failed"
+                            chunk = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+                        choices = chunk.get("choices") or []
+                        choice = choices[0] if choices else {}
+                        delta = choice.get("delta") if isinstance(choice, dict) else {}
+                        delta_content = delta.get("content") if isinstance(delta, dict) else ""
+                        delta_reasoning = delta.get("reasoning_content") if isinstance(delta, dict) else ""
+                        if delta_content:
+                            content_parts.append(delta_content)
+                        if on_delta and (delta_content or delta_reasoning):
+                            emitted = True
+                            try:
+                                on_delta(delta_content or "", delta_reasoning or "")
+                            except Exception:
+                                logger.exception("LLM stream delta callback failed")
+                        if choice.get("finish_reason"):
+                            finish_reason = choice.get("finish_reason")
+                        if chunk.get("usage"):
+                            usage = chunk.get("usage")
+                return {
+                    "content": "".join(content_parts),
+                    "finish_reason": finish_reason,
+                    "usage": usage,
+                    "done": saw_done,
+                }
+            except error.HTTPError as exc:
+                logger.error("GLM API error: status=%s reason=%s", exc.code, exc.reason)
+                if exc.code == 429:
+                    self._last_error = "rate_limited"
+                elif exc.code in {500, 502, 503, 504}:
+                    self._last_error = "upstream_error"
+                if emitted:
+                    break
+                should_retry = exc.code in {429, 500, 502, 503, 504} and attempt < max_attempts - 1
+                if should_retry:
+                    retry_after = None
+                    try:
+                        retry_after = exc.headers.get("Retry-After")
+                    except Exception:
+                        retry_after = None
+                    delay = None
+                    if isinstance(retry_after, str) and retry_after.strip():
+                        try:
+                            delay = float(retry_after.strip())
+                        except ValueError:
+                            delay = None
+                    if delay is None:
+                        delay = backoff_base * (2**attempt)
+                    logger.warning(
+                        "GLM stream retrying in %.1fs (attempt %s/%s)",
+                        delay,
+                        attempt + 1,
+                        max_attempts,
+                    )
+                    time.sleep(delay)
+                    continue
+                break
+            except Exception:
+                logger.exception("GLM API stream request failed")
+                self._last_error = "request_failed"
+                if emitted:
+                    break
+                if attempt < max_attempts - 1:
+                    delay = backoff_base * (2**attempt)
+                    logger.warning(
+                        "GLM stream retrying in %.1fs (attempt %s/%s)",
+                        delay,
+                        attempt + 1,
+                        max_attempts,
+                    )
+                    time.sleep(delay)
+                    continue
+                break
 
         return {
-            "content": "".join(content_parts),
-            "finish_reason": finish_reason,
-            "usage": usage,
-            "done": saw_done,
+            "content": "",
+            "finish_reason": None,
+            "usage": None,
+            "done": False,
         }
 
     def rewrite_blueprint(

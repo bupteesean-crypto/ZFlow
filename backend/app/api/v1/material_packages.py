@@ -1,13 +1,8 @@
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict
-
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
-from fastapi.responses import StreamingResponse
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_current_user
 from app.api.v1.response import ok
@@ -15,8 +10,12 @@ from app.core.config import settings
 from app.db.session import SessionLocal, get_db
 from app.repositories import material_packages as package_repo
 from app.repositories import projects as project_repo
+from app.services.access_control import can_access_project, can_manage_project
 from app.services.blueprint_service import build_blueprint
-from app.services.generation_events import publish_generation_event, reset_generation_events
+from app.services.generation_events import (
+    publish_generation_event,
+    reset_generation_events,
+)
 from app.services.generation_todo import TODO_LIST
 from app.services.image_service import ImageService
 from app.services.llm_service import (
@@ -24,7 +23,6 @@ from app.services.llm_service import (
     _normalize_material_package_struct,
     _validate_material_package_struct,
 )
-from app.services.user_llm_settings import resolve_llm_overrides
 from app.services.model_registry import select_enabled_model
 from app.services.package_events import (
     format_package_sse,
@@ -32,9 +30,13 @@ from app.services.package_events import (
     subscribe_package_events,
     unsubscribe_package_events,
 )
-from app.services.access_control import can_access_project, can_manage_project
+from app.services.user_llm_settings import resolve_llm_overrides
 from app.services.video_service import VideoService
 from app.store import new_id, utc_now
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["material-packages"])
 image_service = ImageService()
@@ -82,7 +84,9 @@ def _load_constraints(path: Path, fallback: str) -> str:
         return fallback
 
 
-SCENE_QUALITY_CONSTRAINTS = _load_constraints(_SCENE_CONSTRAINTS_PATH, _DEFAULT_SCENE_QUALITY_CONSTRAINTS)
+SCENE_QUALITY_CONSTRAINTS = _load_constraints(
+    _SCENE_CONSTRAINTS_PATH, _DEFAULT_SCENE_QUALITY_CONSTRAINTS
+)
 CHARACTER_QUALITY_CONSTRAINTS = _load_constraints(
     _CHARACTER_CONSTRAINTS_PATH, _DEFAULT_CHARACTER_QUALITY_CONSTRAINTS
 )
@@ -111,11 +115,17 @@ def _normalize_documents(value: object) -> list[dict]:
 def _resolve_image_size(input_config: dict) -> str:
     size = ""
     if isinstance(input_config, dict):
-        size = input_config.get("image_size") if isinstance(input_config.get("image_size"), str) else ""
+        size = (
+            input_config.get("image_size")
+            if isinstance(input_config.get("image_size"), str)
+            else ""
+        )
     return size or settings.seedream_default_size or "960x1280"
 
 
-def _build_package_event(package_id: str, event: str, payload: dict | None = None) -> dict:
+def _build_package_event(
+    package_id: str, event: str, payload: dict | None = None
+) -> dict:
     return {
         "event": event,
         "package_id": package_id,
@@ -137,7 +147,9 @@ def _scene_reference_url(images: list[dict], scene_id: str) -> str:
     matches = [
         image
         for image in images
-        if image.get("type") == "scene" and image.get("scene_id") == scene_id and image.get("url")
+        if image.get("type") == "scene"
+        and image.get("scene_id") == scene_id
+        and image.get("url")
     ]
     chosen = _select_active_image(matches)
     return chosen.get("url") if isinstance(chosen, dict) else ""
@@ -155,9 +167,13 @@ def _subject_reference_urls(images: list[dict], subject_id: str) -> list[str]:
     ]
     if not candidates:
         return []
-    active = [image for image in candidates if image.get("is_active") is True] or candidates
+    active = [
+        image for image in candidates if image.get("is_active") is True
+    ] or candidates
 
-    sheet = [image.get("url") for image in active if image.get("type") == "character_sheet"]
+    sheet = [
+        image.get("url") for image in active if image.get("type") == "character_sheet"
+    ]
     sheet = [url for url in sheet if isinstance(url, str) and url.strip()]
     if sheet:
         return sheet[:1]
@@ -230,11 +246,15 @@ def _select_active_video(videos: list[dict]) -> dict | None:
 
 def _extract_subject_ids(shot: dict, subjects: list[dict]) -> list[str]:
     if isinstance(shot.get("subject_ids"), list):
-        provided = [str(item).strip() for item in shot.get("subject_ids") if str(item).strip()]
+        provided = [
+            str(item).strip() for item in shot.get("subject_ids") if str(item).strip()
+        ]
         if provided:
             return list(dict.fromkeys(provided))
     if isinstance(shot.get("subject_names"), list):
-        names = [str(item).strip() for item in shot.get("subject_names") if str(item).strip()]
+        names = [
+            str(item).strip() for item in shot.get("subject_names") if str(item).strip()
+        ]
         if names:
             matched = []
             for subject in subjects:
@@ -329,7 +349,9 @@ def _emit_image_error(project_id: str, image_type: str, message: str) -> None:
     )
 
 
-def _emit_package_image_generated(package_id: str, image_id: str, image_type: str) -> None:
+def _emit_package_image_generated(
+    package_id: str, image_id: str, image_type: str
+) -> None:
     publish_package_event(
         package_id,
         _build_package_event(
@@ -356,7 +378,9 @@ def _next_package_version(items: list[dict]) -> int:
     for item in items:
         materials = item.get("materials") if isinstance(item, dict) else {}
         metadata = materials.get("metadata") if isinstance(materials, dict) else {}
-        version = metadata.get("package_version") if isinstance(metadata, dict) else None
+        version = (
+            metadata.get("package_version") if isinstance(metadata, dict) else None
+        )
         if isinstance(version, int) and version > max_version:
             max_version = version
     if max_version == 0 and items:
@@ -368,8 +392,14 @@ def _extract_source_prompt(materials: dict) -> str:
     metadata = materials.get("metadata") if isinstance(materials, dict) else {}
     blueprint = metadata.get("blueprint_v1") if isinstance(metadata, dict) else {}
     if isinstance(blueprint, dict):
-        generation = blueprint.get("generation") if isinstance(blueprint.get("generation"), dict) else {}
-        source_prompt = generation.get("source_prompt") if isinstance(generation, dict) else ""
+        generation = (
+            blueprint.get("generation")
+            if isinstance(blueprint.get("generation"), dict)
+            else {}
+        )
+        source_prompt = (
+            generation.get("source_prompt") if isinstance(generation, dict) else ""
+        )
         if isinstance(source_prompt, str) and source_prompt.strip():
             return source_prompt.strip()
     summary = metadata.get("summary") if isinstance(metadata, dict) else ""
@@ -383,11 +413,19 @@ def _join_keywords(items: list[str]) -> str:
 def _build_style_prompt(art_style: dict) -> str:
     style_prompt = art_style.get("style_prompt") if isinstance(art_style, dict) else ""
     style_prompt = style_prompt.strip() if isinstance(style_prompt, str) else ""
-    palette = art_style.get("palette") if isinstance(art_style.get("palette"), list) else []
-    palette = [str(item).strip() for item in palette if str(item).strip()] if isinstance(palette, list) else []
+    palette = (
+        art_style.get("palette") if isinstance(art_style.get("palette"), list) else []
+    )
+    palette = (
+        [str(item).strip() for item in palette if str(item).strip()]
+        if isinstance(palette, list)
+        else []
+    )
     if palette:
         palette_line = f"Palette: {', '.join(palette)}"
-        style_prompt = f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
+        style_prompt = (
+            f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
+        )
     return style_prompt
 
 
@@ -402,11 +440,17 @@ def _compose_image_prompt(base_prompt: str, style_prompt: str, constraints: str)
     return "\n\n".join([section for section in sections if section]).strip()
 
 
-def _build_character_prompt_parts(subject: dict, blueprint: dict, sheet_prompt: str) -> dict:
+def _build_character_prompt_parts(
+    subject: dict, blueprint: dict, sheet_prompt: str
+) -> dict:
     art_style = blueprint.get("art_style", {}) if isinstance(blueprint, dict) else {}
     name = subject.get("name") or "Character"
     description = subject.get("description") or ""
-    traits = subject.get("visual_traits") if isinstance(subject.get("visual_traits"), list) else []
+    traits = (
+        subject.get("visual_traits")
+        if isinstance(subject.get("visual_traits"), list)
+        else []
+    )
     traits_text = _join_keywords([str(item) for item in traits]) if traits else ""
     content_lines = [
         f"Character: {name}",
@@ -422,10 +466,16 @@ def _build_character_prompt_parts(subject: dict, blueprint: dict, sheet_prompt: 
     style_prompt = art_style.get("style_prompt") if isinstance(art_style, dict) else ""
     style_prompt = style_prompt.strip() if isinstance(style_prompt, str) else ""
     palette = art_style.get("palette") if isinstance(art_style, dict) else []
-    palette = [str(item).strip() for item in palette if str(item).strip()] if isinstance(palette, list) else []
+    palette = (
+        [str(item).strip() for item in palette if str(item).strip()]
+        if isinstance(palette, list)
+        else []
+    )
     if palette:
         palette_line = f"Palette: {', '.join(palette)}"
-        style_prompt = f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
+        style_prompt = (
+            f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
+        )
 
     return {
         "content": "\n".join(content_lines).strip(),
@@ -438,8 +488,12 @@ def _append_image_to_package(db: Session, package_id: str, image: dict) -> bool:
     package = package_repo.get_package(db, package_id)
     if not package:
         return False
-    materials = package.get("materials") if isinstance(package.get("materials"), dict) else {}
-    metadata = materials.get("metadata") if isinstance(materials.get("metadata"), dict) else {}
+    materials = (
+        package.get("materials") if isinstance(package.get("materials"), dict) else {}
+    )
+    metadata = (
+        materials.get("metadata") if isinstance(materials.get("metadata"), dict) else {}
+    )
     images = metadata.get("images") if isinstance(metadata.get("images"), list) else []
     images.append(image)
     metadata["images"] = images
@@ -452,15 +506,25 @@ def _build_character_sheet_prompt(subject: dict, blueprint: dict) -> str:
     art_style = blueprint.get("art_style", {}) if isinstance(blueprint, dict) else {}
     name = subject.get("name") or "Character"
     description = subject.get("description") or ""
-    traits = subject.get("visual_traits") if isinstance(subject.get("visual_traits"), list) else []
+    traits = (
+        subject.get("visual_traits")
+        if isinstance(subject.get("visual_traits"), list)
+        else []
+    )
     traits_text = _join_keywords([str(item) for item in traits]) if traits else ""
     style_prompt = art_style.get("style_prompt") if isinstance(art_style, dict) else ""
     style_prompt = style_prompt.strip() if isinstance(style_prompt, str) else ""
     palette = art_style.get("palette") if isinstance(art_style, dict) else []
-    palette = [str(item).strip() for item in palette if str(item).strip()] if isinstance(palette, list) else []
+    palette = (
+        [str(item).strip() for item in palette if str(item).strip()]
+        if isinstance(palette, list)
+        else []
+    )
     if palette:
         palette_line = f"Palette: {', '.join(palette)}"
-        style_prompt = f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
+        style_prompt = (
+            f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
+        )
 
     lines = [
         "生成同一个角色的三视图角色设定图（turnaround / model sheet）。",
@@ -476,12 +540,12 @@ def _build_character_sheet_prompt(subject: dict, blueprint: dict) -> str:
         [
             "",
             "要求：",
-            "- 画面必须同时包含【正面视图 / 侧面视图 / 背面视图】，三个视图横向并排展示",
-            "- 角色一致性要求：五官一致、发型一致、服装款式一致、颜色一致、身材比例一致",
-            "- 姿态：标准站立中立姿态（neutral pose），双脚自然站立，身体直立，无动作、无夸张姿势",
+            "- 画面必须同时包含角色的【正面视图 / 侧面视图 / 背面视图】，三个视图横向并排展示",
+            "- 不同视图需要确保：五官一致、发型一致、服装款式一致、颜色一致、身材比例一致",
+            "- 角色保持：标准站立中立姿态（neutral pose），双脚自然站立，身体直立，无动作、无夸张姿势",
             "- 视角：正交视图（orthographic view），不允许透视，不允许镜头角度变化，仅正面/侧面/背面三种视角",
             "- 光照：均匀棚拍光照，无强阴影，无戏剧化光影",
-            "- 背景：纯白色或浅灰色背景，无场景、无道具、无装饰",
+            "- 背景：纯白色背景，无场景、无道具、无装饰",
             "- 绘制：高细节，线条清晰，轮廓明确，适合作为角色参考设定图使用",
             "- 强约束：禁止改变服装，禁止改变颜色，禁止增加动作，禁止透视，禁止生成多个人物",
             "- 禁止文字、水印、Logo、字幕",
@@ -501,10 +565,15 @@ def _run_feedback_image_generation(
 ) -> None:
     db = SessionLocal()
     try:
+        tasks: list[dict] = []
         for subject in blueprint.get("subjects", []):
             subject_id = subject.get("id")
             subject_name = subject.get("name")
-            base_prompt = subject.get("image_prompt") if isinstance(subject.get("image_prompt"), str) else ""
+            base_prompt = (
+                subject.get("image_prompt")
+                if isinstance(subject.get("image_prompt"), str)
+                else ""
+            )
             if base_prompt.strip():
                 sheet_prompt = _compose_image_prompt(
                     base_prompt,
@@ -512,53 +581,30 @@ def _run_feedback_image_generation(
                     CHARACTER_QUALITY_CONSTRAINTS,
                 )
             else:
-                sheet_prompt = _build_character_sheet_prompt(subject, blueprint) or blueprint["summary"]["logline"]
-            image_result = None
-            try:
-                image_result = image_service.generate_image(sheet_prompt, size=image_size, model=model)
-            except Exception:
-                logger.exception(
-                    "generation stage=character_sheet failed package_id=%s subject_id=%s",
-                    package_id,
-                    subject_id,
+                sheet_prompt = (
+                    _build_character_sheet_prompt(subject, blueprint)
+                    or blueprint["summary"]["logline"]
                 )
-                _emit_image_error(project_id, "character_sheet", "角色三视图生成失败")
-            if not isinstance(image_result, dict) or not image_result.get("url"):
-                continue
-            prompt_parts = _build_character_prompt_parts(subject, blueprint, sheet_prompt)
-            image_payload = {
-                "id": new_id(),
-                "type": "character_sheet",
-                "subject_id": subject_id,
-                "subject_name": subject_name,
-                "url": image_result.get("url"),
-                "prompt": image_result.get("prompt") or sheet_prompt,
-                "prompt_parts": prompt_parts,
-                "provider": image_result.get("provider"),
-                "model": image_result.get("model"),
-                "model_id": model_id,
-                "size": image_result.get("size"),
-                "is_active": True,
-            }
-            try:
-                if _append_image_to_package(db, package_id, image_payload):
-                    _emit_image_generated(project_id, image_payload["id"], image_payload["type"])
-                    if emit_package_events:
-                        _emit_package_image_generated(package_id, image_payload["id"], image_payload["type"])
-            except SQLAlchemyError:
-                db.rollback()
-                logger.exception(
-                    "generation stage=character_sheet persist failed package_id=%s subject_id=%s",
-                    package_id,
-                    subject_id,
-                )
-                _emit_image_error(project_id, "character_sheet", "角色三视图保存失败")
-                if emit_package_events:
-                    _emit_package_image_error(package_id, "character_sheet", "角色三视图保存失败")
+            prompt_parts = _build_character_prompt_parts(
+                subject, blueprint, sheet_prompt
+            )
+            tasks.append(
+                {
+                    "kind": "character_sheet",
+                    "subject_id": subject_id,
+                    "subject_name": subject_name,
+                    "prompt": sheet_prompt,
+                    "prompt_parts": prompt_parts,
+                }
+            )
 
         for scene in blueprint.get("scenes", []):
             scene_id = scene.get("id")
-            base_prompt = scene.get("image_prompt") if isinstance(scene.get("image_prompt"), str) else ""
+            base_prompt = (
+                scene.get("image_prompt")
+                if isinstance(scene.get("image_prompt"), str)
+                else ""
+            )
             if base_prompt.strip():
                 scene_prompt = _compose_image_prompt(
                     base_prompt,
@@ -566,59 +612,134 @@ def _run_feedback_image_generation(
                     SCENE_QUALITY_CONSTRAINTS,
                 )
             else:
-                scene_prompt = scene.get("prompt_hint") or scene.get("description") or blueprint["summary"]["logline"]
-            image_result = None
-            try:
-                image_result = image_service.generate_image(scene_prompt, size=image_size, model=model)
-            except Exception:
-                logger.exception(
-                    "generation stage=image_gen failed package_id=%s scene_id=%s",
-                    package_id,
-                    scene_id,
+                scene_prompt = (
+                    scene.get("prompt_hint")
+                    or scene.get("description")
+                    or blueprint["summary"]["logline"]
                 )
-                _emit_image_error(project_id, "scene", "场景图生成失败")
-                if emit_package_events:
-                    _emit_package_image_error(package_id, "scene", "场景图生成失败")
-            if not isinstance(image_result, dict) or not image_result.get("url"):
-                continue
-            image_payload = {
-                "id": new_id(),
-                "type": "scene",
-                "scene_id": scene_id,
-                "url": image_result.get("url"),
-                "prompt": image_result.get("prompt") or scene_prompt,
-                "prompt_parts": {
-                    "content": scene_prompt,
-                    "style": blueprint.get("art_style", {}).get("style_prompt") or "",
-                    "constraints": SCENE_QUALITY_CONSTRAINTS,
-                },
-                "provider": image_result.get("provider"),
-                "model": image_result.get("model"),
-                "model_id": model_id,
-                "size": image_result.get("size"),
-                "is_active": True,
-            }
+            tasks.append(
+                {
+                    "kind": "scene",
+                    "scene_id": scene_id,
+                    "prompt": scene_prompt,
+                }
+            )
+
+        def _generate(task: dict) -> dict:
             try:
-                if _append_image_to_package(db, package_id, image_payload):
-                    _emit_image_generated(project_id, image_payload["id"], image_payload["type"])
-                    if emit_package_events:
-                        _emit_package_image_generated(package_id, image_payload["id"], image_payload["type"])
-            except SQLAlchemyError:
-                db.rollback()
-                logger.exception(
-                    "generation stage=image_gen persist failed package_id=%s scene_id=%s",
-                    package_id,
-                    scene_id,
+                result = image_service.generate_image(
+                    task["prompt"], size=image_size, model=model
                 )
-                _emit_image_error(project_id, "scene", "场景图保存失败")
-                if emit_package_events:
-                    _emit_package_image_error(package_id, "scene", "场景图保存失败")
+            except Exception as exc:
+                return {"task": task, "error": str(exc)}
+            return {"task": task, "image_result": result}
+
+        if tasks:
+            with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
+                futures = [executor.submit(_generate, task) for task in tasks]
+                for future in as_completed(futures):
+                    result = future.result()
+                    task = result.get("task") or {}
+                    kind = task.get("kind")
+                    if result.get("error"):
+                        if kind == "character_sheet":
+                            _emit_image_error(
+                                project_id, "character_sheet", "角色三视图生成失败"
+                            )
+                            if emit_package_events:
+                                _emit_package_image_error(
+                                    package_id, "character_sheet", "角色三视图生成失败"
+                                )
+                        else:
+                            _emit_image_error(project_id, "scene", "场景图生成失败")
+                            if emit_package_events:
+                                _emit_package_image_error(
+                                    package_id, "scene", "场景图生成失败"
+                                )
+                        continue
+                    image_result = result.get("image_result")
+                    if not isinstance(image_result, dict) or not image_result.get(
+                        "url"
+                    ):
+                        continue
+
+                    if kind == "character_sheet":
+                        image_payload = {
+                            "id": new_id(),
+                            "type": "character_sheet",
+                            "subject_id": task.get("subject_id"),
+                            "subject_name": task.get("subject_name"),
+                            "url": image_result.get("url"),
+                            "prompt": image_result.get("prompt")
+                            or task.get("prompt")
+                            or "",
+                            "prompt_parts": task.get("prompt_parts") or {},
+                            "provider": image_result.get("provider"),
+                            "model": image_result.get("model"),
+                            "model_id": model_id,
+                            "size": image_result.get("size"),
+                            "is_active": True,
+                        }
+                    else:
+                        image_payload = {
+                            "id": new_id(),
+                            "type": "scene",
+                            "scene_id": task.get("scene_id"),
+                            "url": image_result.get("url"),
+                            "prompt": image_result.get("prompt")
+                            or task.get("prompt")
+                            or "",
+                            "prompt_parts": {
+                                "content": task.get("prompt") or "",
+                                "style": blueprint.get("art_style", {}).get(
+                                    "style_prompt"
+                                )
+                                or "",
+                                "constraints": SCENE_QUALITY_CONSTRAINTS,
+                            },
+                            "provider": image_result.get("provider"),
+                            "model": image_result.get("model"),
+                            "model_id": model_id,
+                            "size": image_result.get("size"),
+                            "is_active": True,
+                        }
+                    try:
+                        if _append_image_to_package(db, package_id, image_payload):
+                            _emit_image_generated(
+                                project_id, image_payload["id"], image_payload["type"]
+                            )
+                            if emit_package_events:
+                                _emit_package_image_generated(
+                                    package_id,
+                                    image_payload["id"],
+                                    image_payload["type"],
+                                )
+                    except SQLAlchemyError:
+                        db.rollback()
+                        logger.exception(
+                            "generation stage=image_gen persist failed package_id=%s image_type=%s",
+                            package_id,
+                            image_payload.get("type"),
+                        )
+                        _emit_image_error(
+                            project_id,
+                            image_payload.get("type") or "scene",
+                            "图片保存失败",
+                        )
+                        if emit_package_events:
+                            _emit_package_image_error(
+                                package_id,
+                                image_payload.get("type") or "scene",
+                                "图片保存失败",
+                            )
 
         try:
             package_repo.update_package(db, package_id, {"status": "completed"})
         except SQLAlchemyError:
             db.rollback()
-            logger.exception("generation stage=image_finalize failed package_id=%s", package_id)
+            logger.exception(
+                "generation stage=image_finalize failed package_id=%s", package_id
+            )
             _emit_image_error(project_id, "all", "图片阶段收尾失败")
             if emit_package_events:
                 _emit_package_image_error(package_id, "all", "图片阶段收尾失败")
@@ -652,7 +773,8 @@ def _run_stream_package_generation(
     )
     try:
         publish_package_event(
-            package_id, _build_package_event(package_id, "phase.started", {"phase": "text"})
+            package_id,
+            _build_package_event(package_id, "phase.started", {"phase": "text"}),
         )
 
         def on_delta(delta: str, reasoning: str) -> None:
@@ -662,7 +784,9 @@ def _run_stream_package_generation(
             payload = {"phase": "text", "delta": delta or ""}
             if reasoning:
                 payload["reasoning_delta"] = reasoning
-            publish_package_event(package_id, _build_package_event(package_id, "phase.delta", payload))
+            publish_package_event(
+                package_id, _build_package_event(package_id, "phase.delta", payload)
+            )
 
         result = llm.stream_material_package(
             prompt,
@@ -696,12 +820,10 @@ def _run_stream_package_generation(
 
         blueprint = build_blueprint(normalized, source_prompt=prompt)
         image_size = _resolve_image_size(input_config)
-        try:
-            package_name = llm.generate_package_name(
-                blueprint["summary"]["logline"], blueprint.get("art_style", {})
-            )
-        except Exception:
-            package_name = (blueprint["summary"]["logline"] or "素材包")[:10]
+        summary_text = blueprint.get("summary", {}).get("logline") or blueprint.get(
+            "summary", {}
+        ).get("synopsis")
+        package_name = (summary_text or "素材包")[:10]
 
         resolved_model_id = image_model_id
         resolved_model = None
@@ -724,7 +846,9 @@ def _run_stream_package_generation(
                     else blueprint["summary"]["synopsis"],
                     "style": None,
                     "aspect_ratio": (
-                        input_config.get("aspect_ratio") if isinstance(input_config, dict) else None
+                        input_config.get("aspect_ratio")
+                        if isinstance(input_config, dict)
+                        else None
                     )
                     or "3:4",
                     "size": image_size,
@@ -787,7 +911,8 @@ def _run_stream_package_generation(
         )
 
         publish_package_event(
-            package_id, _build_package_event(package_id, "done", {"status": "completed"})
+            package_id,
+            _build_package_event(package_id, "done", {"status": "completed"}),
         )
     except Exception as exc:
         logger.exception("stream generation failed package_id=%s", package_id)
@@ -799,7 +924,11 @@ def _run_stream_package_generation(
         except SQLAlchemyError:
             materials_payload = None
         if isinstance(materials_payload, dict):
-            metadata = materials_payload.get("metadata") if isinstance(materials_payload.get("metadata"), dict) else {}
+            metadata = (
+                materials_payload.get("metadata")
+                if isinstance(materials_payload.get("metadata"), dict)
+                else {}
+            )
             metadata["partial_text"] = partial_text
             materials_payload["metadata"] = metadata
         try:
@@ -808,7 +937,8 @@ def _run_stream_package_generation(
                 package_id,
                 {
                     "status": "failed",
-                    "materials": materials_payload or {"metadata": {"partial_text": partial_text}},
+                    "materials": materials_payload
+                    or {"metadata": {"partial_text": partial_text}},
                 },
             )
         except SQLAlchemyError:
@@ -836,13 +966,17 @@ def _run_stream_package_generation(
 def _build_storyboard_prompt_parts(shot: dict, scene: dict, blueprint: dict) -> dict:
     summary = blueprint.get("summary", {}) if isinstance(blueprint, dict) else {}
     art_style = blueprint.get("art_style", {}) if isinstance(blueprint, dict) else {}
-    subjects = blueprint.get("subjects") if isinstance(blueprint.get("subjects"), list) else []
+    subjects = (
+        blueprint.get("subjects") if isinstance(blueprint.get("subjects"), list) else []
+    )
 
     description = shot.get("description") or ""
     camera = shot.get("camera") or ""
     scene_summary = scene.get("description") or summary.get("synopsis") or ""
     mood = scene.get("mood") or "neutral"
-    keywords = summary.get("keywords") if isinstance(summary.get("keywords"), list) else []
+    keywords = (
+        summary.get("keywords") if isinstance(summary.get("keywords"), list) else []
+    )
 
     content_lines = []
     if description:
@@ -862,8 +996,14 @@ def _build_storyboard_prompt_parts(shot: dict, scene: dict, blueprint: dict) -> 
         for subject in subjects:
             name = subject.get("name") or "Character"
             desc = subject.get("description") or ""
-            traits = subject.get("visual_traits") if isinstance(subject.get("visual_traits"), list) else []
-            traits_text = _join_keywords([str(item) for item in traits]) if traits else ""
+            traits = (
+                subject.get("visual_traits")
+                if isinstance(subject.get("visual_traits"), list)
+                else []
+            )
+            traits_text = (
+                _join_keywords([str(item) for item in traits]) if traits else ""
+            )
             line = f"{name}: {desc}".strip()
             if traits_text:
                 line = f"{line} (Traits: {traits_text})"
@@ -873,11 +1013,19 @@ def _build_storyboard_prompt_parts(shot: dict, scene: dict, blueprint: dict) -> 
 
     style_prompt = art_style.get("style_prompt") if isinstance(art_style, dict) else ""
     style_prompt = style_prompt.strip() if isinstance(style_prompt, str) else ""
-    palette = art_style.get("palette") if isinstance(art_style.get("palette"), list) else []
-    palette = [str(item).strip() for item in palette if str(item).strip()] if isinstance(palette, list) else []
+    palette = (
+        art_style.get("palette") if isinstance(art_style.get("palette"), list) else []
+    )
+    palette = (
+        [str(item).strip() for item in palette if str(item).strip()]
+        if isinstance(palette, list)
+        else []
+    )
     if palette:
         palette_line = f"Palette: {', '.join(palette)}"
-        style_prompt = f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
+        style_prompt = (
+            f"{style_prompt}\n{palette_line}".strip() if style_prompt else palette_line
+        )
 
     return {
         "content": "\n".join(content_lines).strip(),
@@ -931,13 +1079,23 @@ async def create_material_package(
     documents = _normalize_documents(payload.get("documents"))
     input_config = _normalize_input_config(payload.get("input_config"))
     if mode == "pro" and not documents:
-        metadata = project.get("metadata") if isinstance(project.get("metadata"), dict) else {}
-        attachments = metadata.get("attachments") if isinstance(metadata.get("attachments"), list) else []
+        metadata = (
+            project.get("metadata") if isinstance(project.get("metadata"), dict) else {}
+        )
+        attachments = (
+            metadata.get("attachments")
+            if isinstance(metadata.get("attachments"), list)
+            else []
+        )
         documents = _normalize_documents(attachments)
     image_model_id = payload.get("image_model_id")
     if image_model_id is not None and not isinstance(image_model_id, str):
         raise HTTPException(status_code=400, detail="image_model_id must be a string")
-    image_model_id = image_model_id.strip() if isinstance(image_model_id, str) and image_model_id.strip() else None
+    image_model_id = (
+        image_model_id.strip()
+        if isinstance(image_model_id, str) and image_model_id.strip()
+        else None
+    )
     if not image_model_id and isinstance(input_config.get("image_model_id"), str):
         image_model_id = input_config.get("image_model_id").strip() or None
     if image_model_id:
@@ -972,7 +1130,9 @@ async def create_material_package(
                 "prompt": "",
                 "style": None,
                 "aspect_ratio": (
-                    input_config.get("aspect_ratio") if isinstance(input_config, dict) else None
+                    input_config.get("aspect_ratio")
+                    if isinstance(input_config, dict)
+                    else None
                 )
                 or "3:4",
                 "size": image_size,
@@ -1113,11 +1273,23 @@ async def update_material_package(
     current_user: object = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    if "package_name" in payload and payload["package_name"] is not None and not isinstance(payload["package_name"], str):
+    if (
+        "package_name" in payload
+        and payload["package_name"] is not None
+        and not isinstance(payload["package_name"], str)
+    ):
         raise HTTPException(status_code=400, detail="package_name must be a string")
-    if "summary" in payload and payload["summary"] is not None and not isinstance(payload["summary"], str):
+    if (
+        "summary" in payload
+        and payload["summary"] is not None
+        and not isinstance(payload["summary"], str)
+    ):
         raise HTTPException(status_code=400, detail="summary must be a string")
-    if "materials" in payload and payload["materials"] is not None and not isinstance(payload["materials"], dict):
+    if (
+        "materials" in payload
+        and payload["materials"] is not None
+        and not isinstance(payload["materials"], dict)
+    ):
         raise HTTPException(status_code=400, detail="materials must be an object")
     if "status" in payload and payload["status"] not in PACKAGE_STATUSES:
         raise HTTPException(status_code=400, detail="status invalid")
@@ -1154,12 +1326,28 @@ async def generate_storyboard_images(
         db.rollback()
         raise HTTPException(status_code=500, detail="Database error")
 
-    materials = package.get("materials") if isinstance(package.get("materials"), dict) else {}
-    metadata = materials.get("metadata") if isinstance(materials.get("metadata"), dict) else {}
-    blueprint = metadata.get("blueprint_v1") if isinstance(metadata.get("blueprint_v1"), dict) else {}
-    storyboard = blueprint.get("storyboard") if isinstance(blueprint.get("storyboard"), list) else []
-    scenes = blueprint.get("scenes") if isinstance(blueprint.get("scenes"), list) else []
-    subjects = blueprint.get("subjects") if isinstance(blueprint.get("subjects"), list) else []
+    materials = (
+        package.get("materials") if isinstance(package.get("materials"), dict) else {}
+    )
+    metadata = (
+        materials.get("metadata") if isinstance(materials.get("metadata"), dict) else {}
+    )
+    blueprint = (
+        metadata.get("blueprint_v1")
+        if isinstance(metadata.get("blueprint_v1"), dict)
+        else {}
+    )
+    storyboard = (
+        blueprint.get("storyboard")
+        if isinstance(blueprint.get("storyboard"), list)
+        else []
+    )
+    scenes = (
+        blueprint.get("scenes") if isinstance(blueprint.get("scenes"), list) else []
+    )
+    subjects = (
+        blueprint.get("subjects") if isinstance(blueprint.get("subjects"), list) else []
+    )
     if not subjects and isinstance(materials.get("characters"), list):
         subjects = materials.get("characters") or []
 
@@ -1174,10 +1362,16 @@ async def generate_storyboard_images(
     images = metadata.get("images") if isinstance(metadata.get("images"), list) else []
     images = [image for image in images if isinstance(image, dict)]
     if not size:
-        size = metadata.get("image_size") if isinstance(metadata.get("image_size"), str) else None
+        size = (
+            metadata.get("image_size")
+            if isinstance(metadata.get("image_size"), str)
+            else None
+        )
     resolved_model_id = None
     resolved_model = None
-    model_id = model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
+    model_id = (
+        model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
+    )
     if model_id:
         try:
             spec = select_enabled_model(model_id, "image")
@@ -1185,7 +1379,10 @@ async def generate_storyboard_images(
             raise HTTPException(status_code=400, detail="model_id not available")
         resolved_model_id = spec.id if spec else None
         resolved_model = spec.model if spec else None
-    elif isinstance(metadata.get("image_model_id"), str) and metadata.get("image_model_id").strip():
+    elif (
+        isinstance(metadata.get("image_model_id"), str)
+        and metadata.get("image_model_id").strip()
+    ):
         stored_id = metadata.get("image_model_id").strip()
         try:
             spec = select_enabled_model(stored_id, "image")
@@ -1217,7 +1414,9 @@ async def generate_storyboard_images(
             for existing in existing_images:
                 if not isinstance(existing, dict):
                     continue
-                prompt_source = existing.get("prompt_source") or existing.get("promptSource") or ""
+                prompt_source = (
+                    existing.get("prompt_source") or existing.get("promptSource") or ""
+                )
                 provider = existing.get("provider") or ""
                 if prompt_source != "demo_seed" and provider != "demo":
                     has_real = True
@@ -1228,14 +1427,20 @@ async def generate_storyboard_images(
         scene_id = shot.get("scene_id") if isinstance(shot.get("scene_id"), str) else ""
         scene = scene_by_id.get(scene_id, {}) if scene_id else {}
         style_prompt = _build_style_prompt(blueprint.get("art_style", {}))
-        shot_prompt = shot.get("image_prompt") if isinstance(shot.get("image_prompt"), str) else ""
+        shot_prompt = (
+            shot.get("image_prompt")
+            if isinstance(shot.get("image_prompt"), str)
+            else ""
+        )
         if shot_prompt.strip():
             prompt_parts = {
                 "content": shot_prompt.strip(),
                 "style": style_prompt,
                 "constraints": STORYBOARD_QUALITY_CONSTRAINTS,
             }
-            prompt = _compose_image_prompt(shot_prompt, style_prompt, STORYBOARD_QUALITY_CONSTRAINTS)
+            prompt = _compose_image_prompt(
+                shot_prompt, style_prompt, STORYBOARD_QUALITY_CONSTRAINTS
+            )
         else:
             prompt_parts = _build_storyboard_prompt_parts(shot, scene, blueprint)
             prompt = _render_storyboard_prompt(prompt_parts)
@@ -1275,7 +1480,11 @@ async def generate_storyboard_images(
                     model=resolved_model,
                 )
         except Exception:
-            logger.exception("storyboard image generation failed package_id=%s shot_id=%s", package_id, shot_id)
+            logger.exception(
+                "storyboard image generation failed package_id=%s shot_id=%s",
+                package_id,
+                shot_id,
+            )
         return {"task": task, "image_result": image_result}
 
     if generation_tasks:
@@ -1299,7 +1508,10 @@ async def generate_storyboard_images(
             if not isinstance(image_result, dict) or not image_result.get("url"):
                 continue
             for image in images:
-                if image.get("type") == "storyboard" and image.get("shot_id") == shot_id:
+                if (
+                    image.get("type") == "storyboard"
+                    and image.get("shot_id") == shot_id
+                ):
                     image["is_active"] = False
             new_image = {
                 "id": new_id(),
@@ -1325,7 +1537,11 @@ async def generate_storyboard_images(
         metadata["image_model_id"] = resolved_model_id
     if size:
         metadata["image_size"] = size
-        image_plan = metadata.get("image_plan") if isinstance(metadata.get("image_plan"), dict) else {}
+        image_plan = (
+            metadata.get("image_plan")
+            if isinstance(metadata.get("image_plan"), dict)
+            else {}
+        )
         if isinstance(image_plan, dict):
             image_plan["size"] = size
             metadata["image_plan"] = image_plan
@@ -1367,8 +1583,13 @@ async def generate_storyboard_videos(
         raise HTTPException(status_code=400, detail="model_id must be a string")
     if size is not None and not isinstance(size, str):
         raise HTTPException(status_code=400, detail="size must be a string")
-    if (prompt_override or feedback) and not (isinstance(shot_id, str) and shot_id.strip()):
-        raise HTTPException(status_code=400, detail="shot_id required when prompt or feedback is provided")
+    if (prompt_override or feedback) and not (
+        isinstance(shot_id, str) and shot_id.strip()
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="shot_id required when prompt or feedback is provided",
+        )
 
     llm = None
     if feedback:
@@ -1387,11 +1608,25 @@ async def generate_storyboard_videos(
         db.rollback()
         raise HTTPException(status_code=500, detail="Database error")
 
-    materials = package.get("materials") if isinstance(package.get("materials"), dict) else {}
-    metadata = materials.get("metadata") if isinstance(materials.get("metadata"), dict) else {}
-    blueprint = metadata.get("blueprint_v1") if isinstance(metadata.get("blueprint_v1"), dict) else {}
-    storyboard = blueprint.get("storyboard") if isinstance(blueprint.get("storyboard"), list) else []
-    scenes = blueprint.get("scenes") if isinstance(blueprint.get("scenes"), list) else []
+    materials = (
+        package.get("materials") if isinstance(package.get("materials"), dict) else {}
+    )
+    metadata = (
+        materials.get("metadata") if isinstance(materials.get("metadata"), dict) else {}
+    )
+    blueprint = (
+        metadata.get("blueprint_v1")
+        if isinstance(metadata.get("blueprint_v1"), dict)
+        else {}
+    )
+    storyboard = (
+        blueprint.get("storyboard")
+        if isinstance(blueprint.get("storyboard"), list)
+        else []
+    )
+    scenes = (
+        blueprint.get("scenes") if isinstance(blueprint.get("scenes"), list) else []
+    )
 
     if not storyboard:
         return ok({"generated": [], "material_package_id": package_id})
@@ -1405,9 +1640,17 @@ async def generate_storyboard_videos(
     images = [image for image in images if isinstance(image, dict)]
     videos = metadata.get("videos") if isinstance(metadata.get("videos"), list) else []
     if not size:
-        size = metadata.get("video_size") if isinstance(metadata.get("video_size"), str) else None
+        size = (
+            metadata.get("video_size")
+            if isinstance(metadata.get("video_size"), str)
+            else None
+        )
     if not size:
-        size = metadata.get("image_size") if isinstance(metadata.get("image_size"), str) else None
+        size = (
+            metadata.get("image_size")
+            if isinstance(metadata.get("image_size"), str)
+            else None
+        )
     videos = [video for video in videos if isinstance(video, dict)]
 
     existing_by_shot: dict[str, list[dict]] = {}
@@ -1420,7 +1663,14 @@ async def generate_storyboard_videos(
 
     target_shots = []
     if isinstance(shot_id, str) and shot_id:
-        target = next((shot for shot in storyboard if isinstance(shot, dict) and shot.get("id") == shot_id), None)
+        target = next(
+            (
+                shot
+                for shot in storyboard
+                if isinstance(shot, dict) and shot.get("id") == shot_id
+            ),
+            None,
+        )
         if not target:
             raise HTTPException(status_code=404, detail="Shot not found")
         target_shots = [target]
@@ -1431,7 +1681,9 @@ async def generate_storyboard_videos(
     skipped = []
     resolved_model_id = None
     resolved_model = None
-    model_id = model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
+    model_id = (
+        model_id.strip() if isinstance(model_id, str) and model_id.strip() else None
+    )
     if model_id:
         try:
             spec = select_enabled_model(model_id, "video")
@@ -1439,7 +1691,10 @@ async def generate_storyboard_videos(
             raise HTTPException(status_code=400, detail="model_id not available")
         resolved_model_id = spec.id if spec else None
         resolved_model = spec.model if spec else None
-    elif isinstance(metadata.get("video_model_id"), str) and metadata.get("video_model_id").strip():
+    elif (
+        isinstance(metadata.get("video_model_id"), str)
+        and metadata.get("video_model_id").strip()
+    ):
         stored_id = metadata.get("video_model_id").strip()
         try:
             spec = select_enabled_model(stored_id, "video")
@@ -1460,21 +1715,29 @@ async def generate_storyboard_videos(
             continue
 
         shot_images = [
-            image for image in images if image.get("type") == "storyboard" and image.get("shot_id") == shot_key
+            image
+            for image in images
+            if image.get("type") == "storyboard" and image.get("shot_id") == shot_key
         ]
         image_url = _active_storyboard_url(shot_images)
         if not image_url:
             skipped.append({"shot_id": shot_key, "reason": "missing_storyboard_image"})
             continue
         if not (image_url.startswith("http://") or image_url.startswith("https://")):
-            skipped.append({"shot_id": shot_key, "reason": "invalid_storyboard_image_url"})
+            skipped.append(
+                {"shot_id": shot_key, "reason": "invalid_storyboard_image_url"}
+            )
             continue
 
         scene_id = shot.get("scene_id") if isinstance(shot.get("scene_id"), str) else ""
         scene = scene_by_id.get(scene_id, {}) if scene_id else {}
         prompt_parts = _build_storyboard_prompt_parts(shot, scene, blueprint)
         base_prompt = _render_storyboard_prompt(prompt_parts)
-        shot_prompt = shot.get("image_prompt") if isinstance(shot.get("image_prompt"), str) else ""
+        shot_prompt = (
+            shot.get("image_prompt")
+            if isinstance(shot.get("image_prompt"), str)
+            else ""
+        )
         if shot_prompt.strip():
             base_prompt = _compose_image_prompt(
                 shot_prompt,
@@ -1493,15 +1756,24 @@ async def generate_storyboard_videos(
         video_result = None
         try:
             model_override = model or resolved_model
-            video_result = video_service.generate_video_from_image(prompt, [image_url], size=size, model=model_override)
+            video_result = video_service.generate_video_from_image(
+                prompt, [image_url], size=size, model=model_override
+            )
         except Exception:
-            logger.exception("storyboard video generation failed package_id=%s shot_id=%s", package_id, shot_key)
+            logger.exception(
+                "storyboard video generation failed package_id=%s shot_id=%s",
+                package_id,
+                shot_key,
+            )
         if not isinstance(video_result, dict) or not video_result.get("task_id"):
             skipped.append({"shot_id": shot_key, "reason": "video_generation_failed"})
             continue
 
         for video in videos:
-            if video.get("type") == "storyboard_video" and video.get("shot_id") == shot_key:
+            if (
+                video.get("type") == "storyboard_video"
+                and video.get("shot_id") == shot_key
+            ):
                 video["is_active"] = False
 
         new_video = {
@@ -1538,7 +1810,9 @@ async def generate_storyboard_videos(
         db.rollback()
         raise HTTPException(status_code=500, detail="Database error")
 
-    return ok({"generated": generated, "skipped": skipped, "material_package_id": package_id})
+    return ok(
+        {"generated": generated, "skipped": skipped, "material_package_id": package_id}
+    )
 
 
 @router.get("/material-packages/{package_id}/storyboard-videos/{task_id}")
@@ -1556,8 +1830,12 @@ async def get_storyboard_video_result(
         db.rollback()
         raise HTTPException(status_code=500, detail="Database error")
 
-    materials = package.get("materials") if isinstance(package.get("materials"), dict) else {}
-    metadata = materials.get("metadata") if isinstance(materials.get("metadata"), dict) else {}
+    materials = (
+        package.get("materials") if isinstance(package.get("materials"), dict) else {}
+    )
+    metadata = (
+        materials.get("metadata") if isinstance(materials.get("metadata"), dict) else {}
+    )
     videos = metadata.get("videos") if isinstance(metadata.get("videos"), list) else []
     videos = [video for video in videos if isinstance(video, dict)]
 
@@ -1602,7 +1880,11 @@ async def regenerate_from_feedback(
     image_model_id = payload.get("image_model_id")
     if image_model_id is not None and not isinstance(image_model_id, str):
         raise HTTPException(status_code=400, detail="image_model_id must be a string")
-    image_model_id = image_model_id.strip() if isinstance(image_model_id, str) and image_model_id.strip() else None
+    image_model_id = (
+        image_model_id.strip()
+        if isinstance(image_model_id, str) and image_model_id.strip()
+        else None
+    )
 
     llm_overrides = resolve_llm_overrides(current_user)
     if not llm_overrides.get("api_key") and not llm_overrides.get("allow_fallback"):
@@ -1640,10 +1922,16 @@ async def regenerate_from_feedback(
         raise HTTPException(status_code=500, detail="Database error")
     next_version = _next_package_version(items)
 
-    materials = package.get("materials") if isinstance(package.get("materials"), dict) else {}
+    materials = (
+        package.get("materials") if isinstance(package.get("materials"), dict) else {}
+    )
     metadata = materials.get("metadata") if isinstance(materials, dict) else {}
-    previous_blueprint = metadata.get("blueprint_v1") if isinstance(metadata, dict) else {}
-    previous_blueprint = previous_blueprint if isinstance(previous_blueprint, dict) else {}
+    previous_blueprint = (
+        metadata.get("blueprint_v1") if isinstance(metadata, dict) else {}
+    )
+    previous_blueprint = (
+        previous_blueprint if isinstance(previous_blueprint, dict) else {}
+    )
     source_prompt = _extract_source_prompt(materials) or package.get("summary") or ""
 
     mode = metadata.get("generation_mode") if isinstance(metadata, dict) else None
@@ -1654,7 +1942,11 @@ async def regenerate_from_feedback(
     input_config = input_config if isinstance(input_config, dict) else {}
     documents = metadata.get("input_documents") if isinstance(metadata, dict) else []
     documents = documents if isinstance(documents, list) else []
-    image_size = metadata.get("image_size") if isinstance(metadata.get("image_size"), str) else None
+    image_size = (
+        metadata.get("image_size")
+        if isinstance(metadata.get("image_size"), str)
+        else None
+    )
     image_size = image_size or settings.seedream_default_size or "960x1280"
     resolved_model_id = None
     resolved_model = None
@@ -1665,7 +1957,10 @@ async def regenerate_from_feedback(
             raise HTTPException(status_code=400, detail="image_model_id not available")
         resolved_model_id = spec.id if spec else None
         resolved_model = spec.model if spec else None
-    elif isinstance(metadata.get("image_model_id"), str) and metadata.get("image_model_id").strip():
+    elif (
+        isinstance(metadata.get("image_model_id"), str)
+        and metadata.get("image_model_id").strip()
+    ):
         stored_id = metadata.get("image_model_id").strip()
         try:
             spec = select_enabled_model(stored_id, "image")
@@ -1683,20 +1978,41 @@ async def regenerate_from_feedback(
     try:
         previous_summary = ""
         if isinstance(previous_blueprint, dict):
-            summary_block = previous_blueprint.get("summary") if isinstance(previous_blueprint.get("summary"), dict) else {}
-            previous_summary = _normalize_text(summary_block.get("logline")) or _normalize_text(
-                summary_block.get("synopsis")
+            summary_block = (
+                previous_blueprint.get("summary")
+                if isinstance(previous_blueprint.get("summary"), dict)
+                else {}
             )
-        previous_art_style = previous_blueprint.get("art_style") if isinstance(previous_blueprint, dict) else {}
-        previous_subjects = previous_blueprint.get("subjects") if isinstance(previous_blueprint, dict) else []
-        previous_scenes = previous_blueprint.get("scenes") if isinstance(previous_blueprint, dict) else []
-        previous_storyboard = previous_blueprint.get("storyboard") if isinstance(previous_blueprint, dict) else []
+            previous_summary = _normalize_text(
+                summary_block.get("logline")
+            ) or _normalize_text(summary_block.get("synopsis"))
+        previous_art_style = (
+            previous_blueprint.get("art_style")
+            if isinstance(previous_blueprint, dict)
+            else {}
+        )
+        previous_subjects = (
+            previous_blueprint.get("subjects")
+            if isinstance(previous_blueprint, dict)
+            else []
+        )
+        previous_scenes = (
+            previous_blueprint.get("scenes")
+            if isinstance(previous_blueprint, dict)
+            else []
+        )
+        previous_storyboard = (
+            previous_blueprint.get("storyboard")
+            if isinstance(previous_blueprint, dict)
+            else []
+        )
 
         def _stage_delta(section: str):
             def handler(delta: str, _reasoning: str) -> None:
                 if not delta:
                     return
                 _emit_content_update(project_id, section, {"delta": delta})
+
             return handler
 
         summary, keywords = llm.generate_summary(
@@ -1719,14 +2035,17 @@ async def regenerate_from_feedback(
             documents=documents,
             input_config=input_config,
             feedback=feedback,
-            previous_art_style=previous_art_style if isinstance(previous_art_style, dict) else {},
+            previous_art_style=previous_art_style
+            if isinstance(previous_art_style, dict)
+            else {},
             on_delta=_stage_delta("art_style"),
         )
         _emit_todo_update(project_id, "art_style", "done")
         _emit_content_update(project_id, "art_style", art_style)
 
         current_step = "package_name"
-        package_name = llm.generate_package_name(summary, art_style)
+        fallback_name = (summary or source_prompt or "素材包").strip()[:10]
+        package_name = fallback_name or "素材包"
         _emit_content_update(project_id, "package_name", package_name)
 
         current_step = "characters"
@@ -1738,7 +2057,9 @@ async def regenerate_from_feedback(
             documents=documents,
             input_config=input_config,
             feedback=feedback,
-            previous_subjects=previous_subjects if isinstance(previous_subjects, list) else [],
+            previous_subjects=previous_subjects
+            if isinstance(previous_subjects, list)
+            else [],
             on_delta=_stage_delta("characters"),
         )
         _emit_todo_update(project_id, "characters", "done")
@@ -1754,7 +2075,9 @@ async def regenerate_from_feedback(
             documents=documents,
             input_config=input_config,
             feedback=feedback,
-            previous_scenes=previous_scenes if isinstance(previous_scenes, list) else [],
+            previous_scenes=previous_scenes
+            if isinstance(previous_scenes, list)
+            else [],
             on_delta=_stage_delta("scenes"),
         )
         _emit_todo_update(project_id, "scenes", "done")
@@ -1771,7 +2094,9 @@ async def regenerate_from_feedback(
             documents=documents,
             input_config=input_config,
             feedback=feedback,
-            previous_storyboard=previous_storyboard if isinstance(previous_storyboard, list) else [],
+            previous_storyboard=previous_storyboard
+            if isinstance(previous_storyboard, list)
+            else [],
             on_delta=_stage_delta("storyboard"),
         )
         _emit_todo_update(project_id, "storyboard", "done")
@@ -1787,7 +2112,11 @@ async def regenerate_from_feedback(
         }
         blueprint = build_blueprint(llm_struct, source_prompt=str(source_prompt))
 
-        image_size = metadata.get("image_size") if isinstance(metadata.get("image_size"), str) else None
+        image_size = (
+            metadata.get("image_size")
+            if isinstance(metadata.get("image_size"), str)
+            else None
+        )
         image_size = image_size or settings.seedream_default_size or "960x1280"
         materials_payload = {
             "metadata": {
@@ -1800,7 +2129,9 @@ async def regenerate_from_feedback(
                     else blueprint["summary"]["synopsis"],
                     "style": None,
                     "aspect_ratio": (
-                        input_config.get("aspect_ratio") if isinstance(input_config, dict) else None
+                        input_config.get("aspect_ratio")
+                        if isinstance(input_config, dict)
+                        else None
                     )
                     or "3:4",
                     "size": image_size,
@@ -1859,7 +2190,11 @@ async def regenerate_from_feedback(
             error_sent = True
             publish_generation_event(
                 project_id,
-                {"type": "generation.error", "step": current_step, "message": "生成失败"},
+                {
+                    "type": "generation.error",
+                    "step": current_step,
+                    "message": "生成失败",
+                },
             )
         raise
     except (RuntimeError, ValueError) as exc:
@@ -1868,7 +2203,11 @@ async def regenerate_from_feedback(
             error_sent = True
             publish_generation_event(
                 project_id,
-                {"type": "generation.error", "step": current_step, "message": "生成失败"},
+                {
+                    "type": "generation.error",
+                    "step": current_step,
+                    "message": "生成失败",
+                },
             )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except SQLAlchemyError:
@@ -1877,7 +2216,11 @@ async def regenerate_from_feedback(
             error_sent = True
             publish_generation_event(
                 project_id,
-                {"type": "generation.error", "step": current_step, "message": "生成失败"},
+                {
+                    "type": "generation.error",
+                    "step": current_step,
+                    "message": "生成失败",
+                },
             )
         raise HTTPException(status_code=500, detail="Database error")
     except Exception as exc:
@@ -1886,6 +2229,10 @@ async def regenerate_from_feedback(
             error_sent = True
             publish_generation_event(
                 project_id,
-                {"type": "generation.error", "step": current_step, "message": "生成失败"},
+                {
+                    "type": "generation.error",
+                    "step": current_step,
+                    "message": "生成失败",
+                },
             )
         raise HTTPException(status_code=502, detail="LLM generation failed") from exc

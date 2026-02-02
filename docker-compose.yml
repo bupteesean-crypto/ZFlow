@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-zflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zflow}
+      POSTGRES_DB: ${POSTGRES_DB:-zflow}
+    volumes:
+      - zflow_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-zflow}:${POSTGRES_PASSWORD:-zflow}@db:5432/${POSTGRES_DB:-zflow}
+      APP_ENV: production
+    volumes:
+      - ./worker/prompts:/app/worker/prompts:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  zflow_db_data:

@@ -248,6 +248,7 @@ class ImageService:
         payload = {
             "model": model,
             "prompt": prompt_with_size or "No prompt provided.",
+            "watermark": False,
         }
         if seedream_size:
             payload["size"] = seedream_size
@@ -287,6 +288,7 @@ class ImageService:
             "model": model,
             "prompt": prompt_with_size or "No prompt provided.",
             "images": ref_images,
+            "watermark": False,
         }
         if seedream_size:
             payload["size"] = seedream_size

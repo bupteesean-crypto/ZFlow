@@ -88,7 +88,7 @@
           <div v-if="streamPackageName" class="stream-title">素材包名称：{{ streamPackageName }}</div>
           <div v-if="isPackageStreaming" class="streaming-block">
             <div class="streaming-title">素材包文本生成中</div>
-            <div class="streaming-text">正在生成结构化内容，请稍候…</div>
+            <pre class="streaming-text">{{ packageStreamText || '生成中…' }}</pre>
           </div>
 
           <!-- Story Summary Section -->
@@ -442,13 +442,13 @@ import StatusBadge from '@/components/common/StatusBadge.vue';
 import ImageSection from '@/components/common/ImageSection.vue';
 import { fetchProject } from '@/api/projects';
 import {
+  createMaterialPackage,
   fetchMaterialPackage,
   fetchMaterialPackages,
   submitMaterialPackageFeedback,
   type MaterialPackage,
 } from '@/api/material-packages';
 import { fetchModels, type ModelOption } from '@/api/models';
-import { startGeneration } from '@/api/generation';
 import { adoptImage, regenerateImage, rewriteImagePrompt } from '@/api/images';
 import {
   adoptTextCandidate,
@@ -2025,6 +2025,7 @@ const openPackageStream = (packageId: string, prompt?: string, startedAt?: numbe
     packageStreamDone.value = true;
     isPackageStreaming.value = false;
     isStreamingImages.value = false;
+    pushStatusMessage('素材包已生成完成', 'completed', 'done');
     closePackageStream();
     sessionStorage.removeItem('streamPackageId');
     sessionStorage.removeItem('streamPackagePrompt');
@@ -2194,18 +2195,21 @@ const retryGeneration = async () => {
       );
       return;
     }
-    sessionStorage.setItem('streamProjectId', context.projectId);
-    sessionStorage.setItem('streamType', 'start');
-    sessionStorage.setItem('streamPrompt', context.input);
-    sessionStorage.setItem('streamStartedAt', String(Date.now()));
     const mode = sessionStorage.getItem('currentMode') || undefined;
-    openGenerationStream(context.projectId, context);
-    await startGeneration(
-      context.projectId,
-      context.input,
-      mode || undefined,
-      selectedImageModelId.value || undefined
-    );
+    const createResult = await createMaterialPackage({
+      project_id: context.projectId,
+      prompt: context.input,
+      mode: mode || undefined,
+      image_model_id: selectedImageModelId.value || undefined,
+    });
+    sessionStorage.setItem('streamPackageId', createResult.package_id);
+    sessionStorage.setItem('streamPackagePrompt', context.input);
+    sessionStorage.setItem('streamPackageStartedAt', String(Date.now()));
+    sessionStorage.removeItem('streamProjectId');
+    sessionStorage.removeItem('streamType');
+    sessionStorage.removeItem('streamPrompt');
+    sessionStorage.removeItem('streamStartedAt');
+    openPackageStream(createResult.package_id, context.input, Date.now());
   } catch (err) {
     closeGenerationStream();
     alert(err instanceof Error ? err.message : '重试失败');
